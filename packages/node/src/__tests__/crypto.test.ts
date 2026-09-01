@@ -52,4 +52,16 @@ describe("NodeCryptoProvider", () => {
 
     expect(a.prv.pkcs8pem).not.toBe(b.prv.pkcs8pem);
   });
+
+  it("always generates a private key exactly 32 bytes (64 hex chars) long", () => {
+    // Regression test: node:crypto's ECDH.getPrivateKey() strips leading
+    // zero bytes instead of returning a fixed-width scalar - about 1 in 400
+    // generated keys hit this without explicit left-padding. Run enough
+    // iterations to reliably hit that case.
+    const provider = new NodeCryptoProvider();
+    for (let i = 0; i < 500; i++) {
+      const key = provider.generate();
+      expect(key.prv.pkcs8pem).toMatch(/^0x[0-9a-f]{64}$/);
+    }
+  });
 });

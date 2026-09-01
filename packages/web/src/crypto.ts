@@ -118,6 +118,12 @@ export class WebCryptoProvider implements ICryptoProvider {
     const message = textEncoder.encode(data);
     const publicKey = fromHex(pub.pkcs8pem);
     const sig = fromBase64(signature);
-    return secp256k1.verify(sig, message, publicKey, { format: "der" });
+    // lowS: false - node:crypto's Sign stream (used by @activeledger/sdk-node
+    // and by the ledger itself) doesn't normalize signatures to the low-S
+    // half-order the way @noble/curves' sign() does by default, and OpenSSL's
+    // verify doesn't require it either. @noble/curves' verify() REJECTS
+    // high-S signatures unless told not to - without this, roughly half of
+    // all otherwise-valid node/ledger signatures would fail here.
+    return secp256k1.verify(sig, message, publicKey, { format: "der", lowS: false });
   }
 }

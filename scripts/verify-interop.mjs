@@ -14,11 +14,11 @@ const { WebCryptoProvider } = await import("../packages/web/lib/index.js");
 const nodeProvider = new NodeCryptoProvider();
 const webProvider = new WebCryptoProvider();
 
-function assert(condition, message) {
+function assert(condition, message, quiet = false) {
   if (!condition) {
     console.error(`FAIL: ${message}`);
     process.exitCode = 1;
-  } else {
+  } else if (!quiet) {
     console.log(`ok - ${message}`);
   }
 }
@@ -48,12 +48,28 @@ const data = JSON.stringify({ $contract: "onboard", $namespace: "default", $i: {
   assert(!webProvider.verify(data + "tampered", signature, key.pub), "web provider rejects a node signature over tampered data");
 }
 
-// Compressed public key round-trip across both providers
+// Compressed public key round-trip across both providers, repeated - a
+// previous bug (unpadded node:crypto private keys, ~1-in-400 odds) only
+// showed up intermittently, so this needs more than one iteration to be a
+// real regression guard.
 {
-  const key = nodeProvider.generate(true);
-  assert(/^0x0[23]/.test(key.pub.pkcs8pem), "node provider compressed pubkey has 02/03 prefix");
-  const signature = nodeProvider.sign(data, key.prv);
-  assert(webProvider.verify(data, signature, key.pub), "compressed node-generated key verifies under web provider");
+  for (let i = 0; i < 200; i++) {
+    const key = nodeProvider.generate(true);
+    assert(/^0x0[23]/.test(key.pub.pkcs8pem), `node provider compressed pubkey has 02/03 prefix (iteration ${i})`, true);
+    const signature = nodeProvider.sign(data, key.prv);
+    assert(webProvider.verify(data, signature, key.pub), `compressed node-generated key verifies under web provider (iteration ${i})`, true);
+  }
+  assert(true, "200x compressed node-generated keys verify under web provider");
+}
+
+// Uncompressed round-trip, repeated the same way.
+{
+  for (let i = 0; i < 200; i++) {
+    const key = nodeProvider.generate();
+    const signature = nodeProvider.sign(data, key.prv);
+    assert(webProvider.verify(data, signature, key.pub), `uncompressed node-generated key verifies under web provider (iteration ${i})`, true);
+  }
+  assert(true, "200x uncompressed node-generated keys verify under web provider");
 }
 
 if (process.exitCode) {

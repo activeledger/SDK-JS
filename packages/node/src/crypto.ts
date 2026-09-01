@@ -42,13 +42,33 @@ export class NodeCryptoProvider implements ICryptoProvider {
     curve.generateKeys();
 
     return {
-      prv: { pkcs8pem: "0x" + curve.getPrivateKey().toString("hex") },
+      // ECDH.getPrivateKey() strips leading zero bytes instead of returning
+      // a fixed-width 32-byte scalar (about 1 in 256 keys per leading zero
+      // byte - roughly 1 in 400 overall) - left-pad back to 32 bytes, or a
+      // short-by-chance key silently produces a private hex string other
+      // implementations (including @noble/curves and this SDK's own PEM
+      // encoding) don't agree with node:crypto about how to interpret.
+      prv: { pkcs8pem: "0x" + this.toFixedLength(curve.getPrivateKey(), 32).toString("hex") },
       pub: {
         pkcs8pem: compressed
           ? "0x" + curve.getPublicKey("hex", "compressed")
           : "0x" + curve.getPublicKey("hex", "uncompressed"),
       },
     };
+  }
+
+  /**
+   * Left-pad a big-endian scalar to a fixed byte length.
+   *
+   * @private
+   */
+  private toFixedLength(buf: Buffer, length: number): Buffer {
+    if (buf.length === length) {
+      return buf;
+    }
+    const padded = Buffer.alloc(length);
+    buf.copy(padded, length - buf.length);
+    return padded;
   }
 
   public sign(data: string, prv: IKeyHandleDetails): string {
