@@ -23,7 +23,7 @@ This replaces the single `@activeledger/sdk` package (Node-only, depended on `@a
 
 ### GitHub
 
-[Repository here](https://github.com/activeledger/SDK-NodeJS/)
+[Repository here](https://github.com/activeledger/SDK-JS/)
 
 ## Installation
 

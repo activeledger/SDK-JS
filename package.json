@@ -8,7 +8,7 @@
     "format": "prettier --write \"packages/*/src/**/*.ts\"",
     "docs": "typedoc --out ./docs --readme ./Readme.md packages/*/src/index.ts"
   },
-  "homepage": "https://github.com/activeledger/SDK-NodeJS",
+  "homepage": "https://github.com/activeledger/SDK-JS",
   "keywords": [
     "activeledger",
     "sdk",
@@ -23,10 +23,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/activeledger/SDK-NodeJS.git"
+    "url": "git+https://github.com/activeledger/SDK-JS.git"
   },
   "bugs": {
-    "url": "https://github.com/activeledger/SDK-NodeJS/issues"
+    "url": "https://github.com/activeledger/SDK-JS/issues"
   },
   "author": "Activeledger",
   "license": "MIT",

@@ -8,15 +8,15 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "homepage": "https://github.com/activeledger/SDK-NodeJS",
+  "homepage": "https://github.com/activeledger/SDK-JS",
   "keywords": ["activeledger", "nodejs", "sdk", "blockchain", "dlt", "distributed ledger technology", "ledger", "smart contracts"],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/activeledger/SDK-NodeJS.git",
+    "url": "git+https://github.com/activeledger/SDK-JS.git",
     "directory": "packages/node"
   },
   "bugs": {
-    "url": "https://github.com/activeledger/SDK-NodeJS/issues"
+    "url": "https://github.com/activeledger/SDK-JS/issues"
   },
   "author": "Activeledger",
   "license": "MIT",
