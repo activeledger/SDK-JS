@@ -95,11 +95,19 @@ jobs:
           registry-url: https://registry.npmjs.org
           scope: "@activeledger"
 
-      # Access is set via lerna.json's command.publish.access ("public") -
-      # lerna publish has no --access CLI flag at all (only
+      # lerna.json's command.publish.access ("public") is also set, but on
+      # its own that wasn't enough for these packages' actual first-ever
+      # publish under these names - failed with "E402 You must sign up for
+      # private packages" (the scoped-package default of restricted access,
+      # since lerna has no --access CLI flag to force it - only
       # --verify-access/--no-verify-access, a different thing entirely).
+      # NPM_CONFIG_ACCESS is read directly by whatever `npm publish` lerna
+      # shells out to, regardless of whether lerna's own config-translation
+      # layer picks up lerna.json's setting for a truly new package name -
+      # a more reliable belt-and-suspenders than lerna.json alone.
       - name: Publish to npmjs.org
         if: ${{ env.NPM_TOKEN_SET == 'true' }}
         run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_ACCESS: public
