@@ -1,17 +1,43 @@
-// @ts-ignore
+/*
+ * MIT License (MIT)
+ * Copyright (c) 2019 Activeledger
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 import { EventEmitter } from "events";
-import EventSourceN = require("eventsource");
-import { IEventConfig, IEventListeners } from "./interfaces";
+import { EventSourceFactory, IEventConfig, IEventListeners } from "./interfaces";
 
 /**
- * This class is used for easy access to the events API provided by the ActiveCore server
+ * This class is used for easy access to the events API provided by the ActiveCore server.
+ *
+ * Takes an EventSourceFactory rather than importing an EventSource
+ * implementation directly - the node package supplies one backed by the
+ * `eventsource` npm package, the web package supplies one backed by the
+ * environment's native `EventSource` global (available in every browser;
+ * React Native apps need to polyfill it, same as WebCrypto).
  *
  * @export
  * @class LedgerEvents
  */
 export class LedgerEvents {
   public errorEvents: EventEmitter;
-  private isBrowser: boolean = require("browser-or-node").isBrowser;
 
   /**
    * Holds referenced listeners
@@ -33,9 +59,10 @@ export class LedgerEvents {
   /**
    * Creates an instance of LedgerEvents.
    * @param {string} url - The ActiveCore URL
+   * @param {EventSourceFactory} createEventSource - Platform-supplied EventSource constructor
    * @memberof LedgerEvents
    */
-  constructor(private url: string) {
+  constructor(private url: string, private createEventSource: EventSourceFactory) {
     // Check that the url has the correct protocol
     if (!(this.url.startsWith("http") || this.url.startsWith("https"))) {
       throw new Error("Activecore URL must include http:// or https://");
@@ -87,11 +114,10 @@ export class LedgerEvents {
     // Build the resource part of the URL
     const resource = streamId ? `activity/subscribe/${streamId}` : "activity/subscribe";
 
-    const eventSource = this.getEventSourceProvider(`${this.url}/${resource}`);
+    const eventSource = this.createEventSource(`${this.url}/${resource}`);
 
-    eventSource.onerror = (error: MessageEvent) => {
+    eventSource.onerror = (error: any) => {
       this.errorEvents.emit("ledgerEventError", error);
-      //this.unsubscribe(internalReference);
     };
 
     eventSource.addEventListener("message", (event: any) => {
@@ -120,8 +146,6 @@ export class LedgerEvents {
     const internalReference = this.reference;
     this.reference++;
 
-    // Check that contract is definied when event is, if it isn't throw an error
-
     // Build the resource part of the URL
     let resource = "events";
 
@@ -132,11 +156,10 @@ export class LedgerEvents {
       if (config.event) resource += `/${config.event}`;
     }
 
-    const eventSource = this.getEventSourceProvider(`${this.url}/${resource}`);
+    const eventSource = this.createEventSource(`${this.url}/${resource}`);
 
-    eventSource.onerror = (error: MessageEvent) => {
+    eventSource.onerror = (error: any) => {
       this.errorEvents.emit("ledgerEventError", error);
-      //this.unsubscribe(internalReference);
     };
 
     eventSource.addEventListener("message", (event: any) => {
@@ -161,7 +184,7 @@ export class LedgerEvents {
     try {
       // Remove the listener from the listeners array
       const eventSource = this.listeners[id];
-      // Close the event connection`
+      // Close the event connection
       eventSource.close();
       // Delete Reference
       delete this.listeners[id];
@@ -169,20 +192,5 @@ export class LedgerEvents {
     } catch (error) {
       return false;
     }
-  }
-
-  /**
-   * Detect EventSource Provider
-   *
-   * @private
-   * @param {string} url
-   * @returns {(EventSource | EventSourceN)}
-   * @memberof LedgerEvents
-   */
-  private getEventSourceProvider(url: string): EventSource | EventSourceN {
-    if(this.isBrowser && EventSource) {
-      return new EventSource(url);
-    }
-    return new EventSourceN(url);
   }
 }

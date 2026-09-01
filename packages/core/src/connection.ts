@@ -21,33 +21,19 @@
  * SOFTWARE.
  */
 
-import { ActiveCrypto } from "@activeledger/activecrypto";
 import axios, { AxiosRequestConfig } from "axios";
-import { IBaseTransaction, IConnectionDataOptions, IHttpOptions, ILedgerResponse, INodeKeyData } from "./interfaces";
+import { IBaseTransaction, IConnectionDataOptions, IHttpOptions, ILedgerResponse } from "./interfaces";
 
 /**
- * Handles connecting to the ledger, sending encrypted and non-encrypted transactions
+ * Handles connecting to the ledger and sending transactions. Axios is
+ * isomorphic (XHR in browsers/React Native, http in Node) so this class
+ * needs no platform-specific code and lives entirely in core.
  *
  * @export
  * @class Connection
  */
 export class Connection {
-  /**
-   * Holds options provided in the constructor
-   *
-   * @private
-   * @type {IConnectionDataOptions}
-   * @memberof Connection
-   */
   private options: IConnectionDataOptions;
-
-  /**
-   * Holds HTTP connection options
-   *
-   * @private
-   * @type {IHttpOptions}
-   * @memberof Connection
-   */
   private httpOptions: IHttpOptions;
 
   /**
@@ -61,20 +47,13 @@ export class Connection {
    * @param {string} protocol - The protocol to use, usually http or https
    * @param {string} address - The URL or IP of the node
    * @param {number} portNumber - The port number of the node
-   * @param {boolean} [encrypt] - Optional: Set to true to encrypt the transaction before sending
    * @memberof Connection
    */
-  constructor(protocol: string, address: string, portNumber: number | string, encrypt?: boolean);
-  constructor(
-    optionsOrProtocol: string | IConnectionDataOptions,
-    address?: string,
-    portNumber?: number | string,
-    encrypt?: boolean,
-  ) {
+  constructor(protocol: string, address: string, portNumber: number | string);
+  constructor(optionsOrProtocol: string | IConnectionDataOptions, address?: string, portNumber?: number | string) {
     const generateOptions = (): IConnectionDataOptions => {
       return {
         address: address as string,
-        encrypt: encrypt ? true : false,
         portNumber: portNumber as number | string,
         protocol: optionsOrProtocol as string,
       };
@@ -84,14 +63,7 @@ export class Connection {
 
     this.httpOptions = {
       baseURL: this.options.protocol + "://" + this.options.address + ":" + this.options.portNumber,
-      headers: this.options.encrypt
-        ? // Use encryption headers
-          {
-            "Content-Type": "application/json",
-            "X-Activeledger-Encrypt": "1",
-          }
-        : // Use normal headers
-          { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json" },
       method: "POST",
       port: this.options.portNumber,
     };
@@ -107,11 +79,7 @@ export class Connection {
   public sendTransaction(txBody: IBaseTransaction): Promise<ILedgerResponse> {
     return new Promise(async (resolve, reject) => {
       try {
-        // Should the data be encrypted first?
-        const transactionData = this.options.encrypt ? await this.encrypt(txBody) : txBody;
-
-        // Post the transaction data
-        const response = await this.postTransaction(transactionData);
+        const response = await this.postTransaction(txBody);
         resolve(response);
       } catch (error) {
         reject(error);
@@ -123,63 +91,17 @@ export class Connection {
    * POST the provided transaction to the ledger
    *
    * @private
-   * @param {(string | IBaseTransaction)} tx - The transaction to POST
+   * @param {IBaseTransaction} tx - The transaction to POST
    * @returns {Promise<ILedgerResponse>} Returns the ledger response
    * @memberof Connection
    */
-  private postTransaction(tx: string | IBaseTransaction): Promise<ILedgerResponse> {
+  private postTransaction(tx: IBaseTransaction): Promise<ILedgerResponse> {
     return new Promise(async (resolve, reject) => {
       this.httpOptions.data = tx;
 
       try {
         const response = await axios(this.httpOptions as AxiosRequestConfig);
         resolve(response.data as ILedgerResponse);
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  /**
-   * Encrypts the transaction if requested
-   *
-   * @private
-   * @param {IBaseTransaction} txBody - The transaction to encrypt
-   * @returns {Promise<string>} Returns the encrypted data as a string
-   * @memberof Connection
-   */
-  private encrypt(txBody: IBaseTransaction): Promise<string> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const keyData: INodeKeyData = await this.getNodeKeyData();
-        const keyPair = new ActiveCrypto.KeyPair("rsa", keyData.pem);
-        resolve(keyPair.encrypt(txBody));
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-  /**
-   * Get the key data from the node specified in the connection
-   *
-   * @private
-   * @returns {Promise<INodeKeyData>} Returns the nodes key data
-   * @memberof Connection
-   */
-  private getNodeKeyData(): Promise<INodeKeyData> {
-    return new Promise(async (resolve, reject) => {
-      const url = `${this.options.protocol}://${this.options.address}:${this.options.portNumber}/a/status`;
-
-      try {
-        const response = await axios.get(url);
-        const jsonData = response.data;
-
-        const nodeKey: INodeKeyData = {
-          encryption: "rsa",
-          pem: Buffer.from(jsonData.pem, "base64").toString(),
-        };
-        resolve(nodeKey);
       } catch (error) {
         reject(error);
       }

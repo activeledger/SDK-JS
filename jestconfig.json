@@ -1,9 +1,8 @@
 {
-  "transform": {
-    "^.+\\.(t)sx?$": "ts-jest"
-  },
-  "testRegex": "(/__tests__/.*|(\\.|/)(test|spec))\\.(jsx?|tsx?)$",
-  "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json", "node"],
+  "preset": "ts-jest",
   "testEnvironment": "node",
-  "setupFilesAfterEnv": ["<rootDir>/setup.js"]
+  "testMatch": ["<rootDir>/packages/core/src/**/__tests__/**/*.test.ts", "<rootDir>/packages/node/src/**/__tests__/**/*.test.ts"],
+  "moduleNameMapper": {
+    "^@activeledger/sdk-core$": "<rootDir>/packages/core/src/index.ts"
+  }
 }

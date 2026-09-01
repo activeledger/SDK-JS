@@ -1,0 +1,35 @@
+{
+  "name": "@activeledger/sdk-node",
+  "version": "2.0.0",
+  "description": "Activeledger SDK for Node.js - secp256k1 signing via node:crypto (no external crypto dependency)",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "homepage": "https://github.com/activeledger/SDK-NodeJS",
+  "keywords": ["activeledger", "nodejs", "sdk", "blockchain", "dlt", "distributed ledger technology", "ledger", "smart contracts"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/activeledger/SDK-NodeJS.git",
+    "directory": "packages/node"
+  },
+  "bugs": {
+    "url": "https://github.com/activeledger/SDK-NodeJS/issues"
+  },
+  "author": "Activeledger",
+  "license": "MIT",
+  "files": ["lib"],
+  "dependencies": {
+    "@activeledger/sdk-core": "^2.0.0",
+    "asn1.js": "^5.4.1",
+    "bip39": "3.1.0",
+    "eventsource": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/eventsource": "1.1.10",
+    "@types/node": "^20.14.0",
+    "typescript": "4.9.5"
+  }
+}

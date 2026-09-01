@@ -1,6 +1,3 @@
-// Reference Fix (Node SDK Builds)
-/// <reference lib="dom" />
-
 /*
  * MIT License (MIT)
  * Copyright (c) 2019 Activeledger
@@ -23,24 +20,42 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { ActiveCrypto } from "@activeledger/activecrypto";
-import EventSourceN = require("eventsource");
+
+// #region Crypto provider interfaces
+//
+// Each platform package (sdk-node, sdk-web) supplies its own ICryptoProvider
+// implementation - core never imports a concrete crypto library so it stays
+// usable in any JS environment.
+
+export interface IKeyHandleDetails {
+  // Field name kept as "pkcs8pem" for compatibility with the original
+  // NodeJS-only SDK's exported key JSON shape, even though secp256k1 keys
+  // here are raw "0x"-prefixed hex, not actually PKCS8 PEM.
+  pkcs8pem: string;
+}
+
+export interface IKeyHandler {
+  pub: IKeyHandleDetails;
+  prv: IKeyHandleDetails;
+}
+
+export interface ICryptoProvider {
+  generate(compressed?: boolean): IKeyHandler;
+  sign(data: string, prv: IKeyHandleDetails): string;
+  verify(data: string, signature: string, pub: IKeyHandleDetails): boolean;
+}
+
+// #endregion
 
 // #region Key Interfaces
 
 export interface IKey {
   identity?: string;
-  key: ActiveCrypto.KeyHandler;
+  key: IKeyHandler;
   type: string;
   name: string;
 }
 
-export interface IKeyExportOptions {
-  location: string;
-  createDir?: boolean;
-  overwrite?: boolean;
-  name?: string;
-}
 // #endregion
 
 // #region Transaction Interfaces
@@ -108,11 +123,6 @@ export interface IOnboardKeyTxOptions {
 
 // #region Connection Interfaces
 
-export interface INodeKeyData {
-  encryption: string;
-  pem: string;
-}
-
 export interface IHttpOptions {
   baseURL: string;
   data?: any;
@@ -126,7 +136,6 @@ export interface IConnectionDataOptions {
   protocol: string;
   address: string;
   portNumber: number | string;
-  encrypt?: boolean;
 }
 // #endregion
 
@@ -163,12 +172,21 @@ interface IUpdatedObject {
 // #endregion
 
 // #region Event interfaces
+
+export interface IEventSourceLike {
+  onerror: ((error: any) => void) | null;
+  addEventListener(type: string, listener: (event: any) => void): void;
+  close(): void;
+}
+
+export type EventSourceFactory = (url: string) => IEventSourceLike;
+
 export interface IEventConfig {
   contract: string;
   event?: string;
 }
 
 export interface IEventListeners {
-  [id: number]: EventSource | EventSourceN;
+  [id: number]: IEventSourceLike;
 }
 // #endregion

@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "lib": ["es2019", "dom"],
+    "target": "es2019",
+    "module": "commonjs",
+    "alwaysStrict": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "removeComments": true
+  },
+  "exclude": ["**/lib/", "**/es/", "**/node_modules/", "**/__tests__/*"]
+}
