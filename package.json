@@ -8,7 +8,7 @@
     "format": "prettier --write \"packages/*/src/**/*.ts\"",
     "docs": "typedoc --out ./docs --readme ./Readme.md packages/*/src/index.ts"
   },
-  "homepage": "https://activeledger.io",
+  "homepage": "https://github.com/activeledger/SDK-NodeJS",
   "keywords": [
     "activeledger",
     "sdk",

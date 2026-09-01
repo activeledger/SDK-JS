@@ -9,7 +9,7 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "homepage": "https://activeledger.io",
+  "homepage": "https://github.com/activeledger/SDK-NodeJS",
   "keywords": ["activeledger", "web", "browser", "react-native", "sdk", "blockchain", "dlt", "distributed ledger technology", "ledger", "smart contracts"],
   "repository": {
     "type": "git",
@@ -24,7 +24,9 @@
   "files": ["lib"],
   "dependencies": {
     "@activeledger/sdk-core": "^2.0.0",
-    "@noble/curves": "^2.4.0"
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/bip39": "^2.4.0"
   },
   "devDependencies": {
     "typescript": "^5.5.4"

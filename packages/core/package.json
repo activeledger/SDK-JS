@@ -8,7 +8,7 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "homepage": "https://activeledger.io",
+  "homepage": "https://github.com/activeledger/SDK-NodeJS",
   "keywords": ["activeledger", "sdk", "blockchain", "dlt", "distributed ledger technology", "ledger", "smart contracts"],
   "repository": {
     "type": "git",

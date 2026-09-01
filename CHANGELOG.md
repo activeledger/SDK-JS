@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking:** `exportKey`/`importKey` (file-based key persistence) moved to `@activeledger/sdk-node`'s `KeyHandler` only - not available on `@activeledger/sdk-web`.
 - `@activeledger/sdk-node` no longer depends on `@activeledger/activecrypto` or `node-rsa` - secp256k1 signing is implemented directly on top of `node:crypto`.
 
+### Added
+
+- `KeyHandler.generateBIP39Key`/`restoreBIP39Key` on both `@activeledger/sdk-node` and `@activeledger/sdk-web` - standard BIP-39 seed + BIP-32 master-key derivation (no HD child derivation) by default, with a `legacy: true` option reproducing the original `@activeledger/sdk-bip39` package's `SHA256(phrase)` scheme for backward compatibility with existing phrases.
+
 ## [1.3.6] - 02-02-2023
 
 ### Fixed

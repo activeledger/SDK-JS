@@ -26,13 +26,13 @@ import { ICryptoProvider, IKeyHandleDetails, IKeyHandler } from "@activeledger/s
 
 const textEncoder = new TextEncoder();
 
-function toHex(bytes: Uint8Array): string {
+export function toHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-function fromHex(hex: string): Uint8Array {
+export function fromHex(hex: string): Uint8Array {
   const clean = hex.replace(/^0x/, "");
   const bytes = new Uint8Array(clean.length / 2);
   for (let i = 0; i < bytes.length; i++) {
