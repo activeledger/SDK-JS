@@ -21,11 +21,11 @@
  * SOFTWARE.
  */
 
-import { ActiveCrypto } from "@activeledger/activecrypto";
 import { Connection } from "./connection";
 import { ILabelledTransaction } from "./interfaces";
 import {
   IBaseTransaction,
+  ICryptoProvider,
   IKey,
   ILabelledTransactionOptions,
   ILedgerResponse,
@@ -55,6 +55,8 @@ export class TransactionHandler {
    * @memberof TransactionHandler
    */
   private namespace = "default";
+
+  constructor(private crypto: ICryptoProvider) {}
 
   /**
    * Internal use
@@ -91,7 +93,7 @@ export class TransactionHandler {
 
     // Set the key data
     tx.$tx.$i[key.name] = {
-      publicKey: (key.key.pub as any).pkcs8pem,
+      publicKey: key.key.pub.pkcs8pem,
       type: key.type,
     };
 
@@ -214,11 +216,9 @@ export class TransactionHandler {
   public signTransaction<T extends IBaseTransaction>(txBody: T | string, key: IKey): Promise<T | string> {
     return new Promise((resolve, reject) => {
       try {
-        const keyPair = new ActiveCrypto.KeyPair(key.type, (key.key.prv as any).pkcs8pem);
-
         // Check the transaction type
         if (typeof txBody === "string") {
-          return resolve(keyPair.sign(txBody));
+          return resolve(this.crypto.sign(txBody, key.key.prv));
         } else {
           let identifier = key.name;
 
@@ -226,7 +226,7 @@ export class TransactionHandler {
             identifier = key.identity;
           }
 
-          txBody.$sigs[identifier] = keyPair.sign(txBody.$tx);
+          txBody.$sigs[identifier] = this.crypto.sign(JSON.stringify(txBody.$tx), key.key.prv);
 
           return resolve(txBody);
         }

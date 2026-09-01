@@ -21,28 +21,18 @@
  * SOFTWARE.
  */
 
-const fs = require("fs");
+import { TransactionHandler as CoreTransactionHandler } from "@activeledger/sdk-core";
+import { WebCryptoProvider } from "./crypto.js";
 
-afterAll(() => {
-  // Delete basic test file
-  if (fs.existsSync("./test-export.json")) {
-    fs.unlinkSync("./test-export.json");
+/**
+ * Pre-wired with WebCryptoProvider so consumers don't need to construct
+ * one themselves.
+ *
+ * @export
+ * @class TransactionHandler
+ */
+export class TransactionHandler extends CoreTransactionHandler {
+  constructor() {
+    super(new WebCryptoProvider());
   }
-
-  // Delete custom name file
-  if (fs.existsSync("./export-name-test.json")) {
-    fs.unlinkSync("./export-name-test.json");
-  }
-
-  // Delete overwrite file
-  if (fs.existsSync("./overwrite-me.json")) {
-    fs.unlinkSync("./overwrite-me.json");
-  }
-
-  // Delete create dir test folders and file
-  if (fs.existsSync("./export")) {
-    fs.unlinkSync("./export/test/test-export.json");
-    fs.rmdirSync("./export/test");
-    fs.rmdirSync("./export");
-  }
-});
+}

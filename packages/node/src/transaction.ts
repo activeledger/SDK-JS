@@ -21,7 +21,19 @@
  * SOFTWARE.
  */
 
-export enum KeyType {
-  EllipticCurve = "secp256k1",
-  RSA = "rsa",
+import { TransactionHandler as CoreTransactionHandler } from "@activeledger/sdk-core";
+import { NodeCryptoProvider } from "./crypto";
+
+/**
+ * Pre-wired with NodeCryptoProvider so consumers don't need to construct
+ * one themselves - `new TransactionHandler()` works exactly like the
+ * pre-split SDK did.
+ *
+ * @export
+ * @class TransactionHandler
+ */
+export class TransactionHandler extends CoreTransactionHandler {
+  constructor() {
+    super(new NodeCryptoProvider());
+  }
 }
