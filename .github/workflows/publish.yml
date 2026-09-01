@@ -1,0 +1,105 @@
+name: Publish packages
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 2.0.1). Leave blank to publish whatever's currently committed in package.json."
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # secrets can't be referenced directly in a step's `if:` - the
+    # "secrets" context isn't in the allowed-contexts list for
+    # expressions there. Routing it through env: first works around that -
+    # env: is an allowed context in `if:`. (This exact mistake broke the
+    # main activeledger repo's own publish workflow entirely the first
+    # time around - every push, tag or not, failed immediately with 0
+    # jobs run, since GitHub refuses to even register a workflow file
+    # that fails schema validation.)
+    env:
+      NPM_TOKEN_SET: ${{ secrets.NPM_TOKEN != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://npm.pkg.github.com
+          scope: "@activeledger"
+
+      # Plain npm workspaces (not lerna bootstrap) - npm ci already sets up
+      # the packages/* symlinks since root package.json declares
+      # "workspaces": ["packages/*"].
+      - name: Install dependencies
+        run: npm ci
+
+      # A pushed tag is the source of truth for what gets published, same
+      # reasoning as the main activeledger repo's workflow. Runs before the
+      # build so nothing built downstream is stale relative to the version
+      # actually published. workflow_dispatch's optional version input
+      # covers a manual republish of an arbitrary version without needing a
+      # new tag.
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx lerna version "${GITHUB_REF_NAME#v}" --no-git-tag-version --no-push --force-publish --yes
+
+      - name: Set version from workflow input
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --yes
+
+      # `lerna version --no-git-tag-version` deliberately leaves the bump as
+      # uncommitted file changes - but `lerna publish` refuses to run
+      # against a dirty tree with no way to opt out. Commit it locally so
+      # the tree is clean for the publish step below; this commit is never
+      # pushed anywhere and only exists in this runner's throwaway checkout.
+      - name: Commit version bump locally (not pushed)
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: set version for publish (not pushed)"
+
+      - name: Build all packages
+        run: npm run build
+
+      - name: Publish to GitHub Packages
+        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://npm.pkg.github.com/
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Re-runs setup-node pointed at npmjs.org - it (re)writes the auth
+      # line in ~/.npmrc for whichever registry-url you give it, so this
+      # has to happen as its own step, after the GitHub Packages publish
+      # above has already finished with it, not before.
+      #
+      # Guarded on the NPM_TOKEN secret actually being set - add it in the
+      # repo's Settings -> Secrets and Actions to turn this on. Skipping
+      # cleanly here (rather than failing) means GitHub Packages keeps
+      # publishing normally in the meantime.
+      - name: Setup Node (npmjs.org)
+        if: ${{ env.NPM_TOKEN_SET == 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          scope: "@activeledger"
+
+      # Access is set via lerna.json's command.publish.access ("public") -
+      # lerna publish has no --access CLI flag at all (only
+      # --verify-access/--no-verify-access, a different thing entirely).
+      - name: Publish to npmjs.org
+        if: ${{ env.NPM_TOKEN_SET == 'true' }}
+        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
