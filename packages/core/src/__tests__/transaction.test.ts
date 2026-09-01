@@ -113,6 +113,55 @@ describe("TransactionHandler.labelledTransaction", () => {
     expect(tx.$tx.$i.input).toEqual({ amount: 1, $stream: "stream-id" });
     expect(tx.$sigs["stream-abc123"]).toBe(`signed(0xprivate):${JSON.stringify(tx.$tx)}`);
   });
+
+  /**
+   * The real node's self-signed verification path
+   * (packages/protocol/src/protocol/process.ts, main activeledger repo)
+   * loops every $tx.$i key and looks up `$sigs[thatKey]` - never the
+   * signer's identity - and separately requires `$i[thatKey].publicKey`
+   * (used directly, no ledger lookup, since there's no existing stream
+   * yet to fetch an authority from). Live-confirmed against a real node
+   * this session: without both of these, deploy/namespace-claim/attestation
+   * transactions (anything using labelledTransaction with selfsign: true)
+   * are rejected with "Self signed signature not found" - the identity-keyed
+   * default above is only correct for the non-self-signed case.
+   */
+  it("self-signed: keys $sigs by the input label and embeds publicKey/type, not the identity", async () => {
+    const provider = new StubCryptoProvider();
+    const key: IKey = {
+      name: "mykey",
+      type: KeyType.EllipticCurve,
+      key: provider.generate(),
+      identity: "stream-abc123",
+    };
+
+    const tx = await new TransactionHandler(provider).labelledTransaction(
+      key,
+      "default",
+      "contract",
+      "contract",
+      { namespace: "myns", name: "mycontract", version: "1", contract: "base64source" },
+      "stream-abc123",
+      undefined,
+      undefined,
+      undefined,
+      true,
+    );
+
+    expect(tx.$selfsign).toBe(true);
+    expect(tx.$tx.$i.contract).toEqual({
+      namespace: "myns",
+      name: "mycontract",
+      version: "1",
+      contract: "base64source",
+      $stream: "stream-abc123",
+      publicKey: "0xpublic",
+      type: KeyType.EllipticCurve,
+    });
+    // Keyed by the input label ("contract"), never the identity.
+    expect(tx.$sigs["contract"]).toBe(`signed(0xprivate):${JSON.stringify(tx.$tx)}`);
+    expect(tx.$sigs["stream-abc123"]).toBeUndefined();
+  });
 });
 
 describe("Connection", () => {

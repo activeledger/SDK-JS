@@ -169,12 +169,28 @@ export class TransactionHandler {
       : (keyOrOptions as ILabelledTransactionOptions);
 
     if (options.key.identity) {
+      // A self-signed input needs its own publicKey/type carried in the
+      // $i entry itself (packages/protocol/src/protocol/process.ts's
+      // self-signed branch: `this.shared.signatureCheck(input.publicKey,
+      // signature, input.type)`, verified directly against that file,
+      // not assumed) - there's no existing stream to fetch an authority
+      // from yet, unlike the normal (non-self-signed) path. Mirrors what
+      // buildOnboardKeyTx() already does correctly for the onboard case.
+      const inputData = { ...options.inputData, $stream: options.stream } as { $stream: string } & Record<
+        string,
+        unknown
+      >;
+      if (options.selfsign) {
+        inputData.publicKey = options.key.key.pub.pkcs8pem;
+        inputData.type = options.key.type;
+      }
+
       const tx: ILabelledTransaction = {
         $sigs: {},
         $tx: {
           $contract: options.contract,
           $i: {
-            [options.inputLabel]: { ...options.inputData, $stream: options.stream },
+            [options.inputLabel]: inputData,
           },
           $namespace: options.namespace,
         },
@@ -196,7 +212,19 @@ export class TransactionHandler {
         tx.$selfsign = options.selfsign;
       }
 
-      return this.signTransaction<ILabelledTransaction>(tx, options.key);
+      // A self-signed transaction's $sigs must be keyed by the $i INPUT
+      // LABEL, not the signer's identity - process.ts's self-signed
+      // branch loops `Object.keys($tx.$i)` and looks up
+      // `$sigs[thatLabel]` for each one, never the identity/stream id.
+      // Confirmed live: without this, a real node rejects with "Self
+      // signed signature not found" - signTransaction()'s normal
+      // identity-keyed default is correct for every other (non-self-
+      // signed, multi-party) transaction shape, just not this one.
+      return this.signTransaction<ILabelledTransaction>(
+        tx,
+        options.key,
+        options.selfsign ? options.inputLabel : undefined,
+      );
     } else {
       return Promise.reject(new Error("Key must have an identity."));
     }
@@ -208,12 +236,20 @@ export class TransactionHandler {
    * @template T extends IBaseTransaction
    * @param {(T | string)} txBody - The transaction to sign
    * @param {IKey} key - The key to use to sign
+   * @param {string} [selfSignLabel] - For a self-signed transaction, the $tx.$i
+   *   label to key $sigs by instead of the signer's identity - see
+   *   labelledTransaction()'s own comment for why this differs from the
+   *   normal (non-self-signed) case.
    * @returns {(Promise<T | string>)} Returns the transaction with its signature, or if a string txBody is provided the signature is returned
    * @memberof TransactionHandler
    */
   public signTransaction(txBody: string, key: IKey): Promise<string>;
-  public signTransaction<T extends IBaseTransaction>(txBody: T, key: IKey): Promise<T>;
-  public signTransaction<T extends IBaseTransaction>(txBody: T | string, key: IKey): Promise<T | string> {
+  public signTransaction<T extends IBaseTransaction>(txBody: T, key: IKey, selfSignLabel?: string): Promise<T>;
+  public signTransaction<T extends IBaseTransaction>(
+    txBody: T | string,
+    key: IKey,
+    selfSignLabel?: string,
+  ): Promise<T | string> {
     return new Promise((resolve, reject) => {
       try {
         // Check the transaction type
@@ -222,7 +258,9 @@ export class TransactionHandler {
         } else {
           let identifier = key.name;
 
-          if (key.identity) {
+          if (selfSignLabel) {
+            identifier = selfSignLabel;
+          } else if (key.identity) {
             identifier = key.identity;
           }
 

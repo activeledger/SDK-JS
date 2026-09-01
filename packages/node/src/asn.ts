@@ -45,6 +45,17 @@ export class AsnParser {
         version: 1,
         privateKey: prv,
         params: { type: "curve", value: [1, 3, 132, 0, 10] },
+        // ECPrivLiteASN's schema actually names this field "public_key",
+        // not "publicKey" - looks like a typo at first read, but it is
+        // NOT safe to "fix": correctly including the field (renaming to
+        // public_key) makes asn1.js emit a public_key BIT STRING under
+        // this schema/encoder combination that Node's own crypto.createSign
+        // then rejects with "error:1E08010C:DECODER routines::unsupported" -
+        // confirmed by this package's own test suite going from 17
+        // passing to 3 failing the moment this was "corrected". Leaving
+        // the field name mismatched means asn1.js's .optional() just
+        // omits it, which is what actually produces a PEM Node's crypto
+        // can sign with. Left as `publicKey` deliberately - do not rename.
         publicKey: { unused: 0, data: pub },
       },
       "pem",
