@@ -105,10 +105,10 @@ This is an npm workspaces + lerna monorepo.
 ```
 $ npm install
 $ npm run build   # builds core, then node, then web, in that order
-$ npm test        # Jest unit tests for sdk-core and sdk-node
+$ npm test        # build, then Jest unit tests for all three packages
 $ node scripts/verify-interop.mjs         # cross-package signature compatibility check
 $ node scripts/verify-ledger-interop.mjs  # compatibility check against the real ledger crypto (run from a checkout with the main activeledger repo built alongside)
 $ node scripts/verify-bip39.mjs           # BIP-39: cross-package parity + backward compat with the old sdk-bip39 package (needs a sibling ../SDK-NodeJS-BIP39 checkout)
 ```
 
-`sdk-web` isn't covered by the Jest suite above - its `@noble/curves` dependency is ESM-only and can't be `require()`'d from ts-jest's CommonJS runtime. It's covered instead by the two interop scripts, which exercise it directly via dynamic `import()`. Wiring up proper Jest ESM support for it is a reasonable next step.
+`sdk-core` and `sdk-node` share `jestconfig.json` at the repo root (plain CommonJS). `sdk-web` has its own `packages/web/jest.config.mjs` and `test` script instead, since its `@noble/curves`/`@scure/bip39` dependencies are ESM-only and can't be `require()`'d from a CommonJS Jest run - it's run separately via `NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs` (Jest's documented mechanism for native ESM support), both invoked automatically by the root `npm test`. Cross-package interop (node<->web signature compatibility, compatibility with the real ledger crypto, BIP-39 backward compatibility with the old add-on) is deliberately left to the three scripts above rather than folded into either package's own Jest suite, since those checks are inherently about two separately-built packages (and in two cases, a second repo) talking to each other - not something either package's isolated unit tests are the right place for.
