@@ -1,6 +1,6 @@
 /*
  * MIT License (MIT)
- * Copyright (c) 2019 Activeledger
+ * Copyright (c) 2026 Activeledger
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -21,14 +21,21 @@
  * SOFTWARE.
  */
 
-export * from "@activeledger/sdk-core";
+import { PayloadHandler as CorePayloadHandler } from "@activeledger/sdk-core";
+import { WebCryptoProvider } from "./crypto.js";
 
-// Explicit named exports (rather than `export *`) so these web-specific
-// classes shadow the core re-exports of the same name above - an ambiguous
-// `export *` name collision would otherwise be a compile error.
-export * from "./crypto.js";
-export * from "./interfaces.js";
-export { KeyHandler } from "./key.js";
-export { TransactionHandler } from "./transaction.js";
-export { PayloadHandler } from "./payload.js";
-export { LedgerEvents } from "./events.js";
+/**
+ * Signs and verifies arbitrary payloads. Same name and same shape in
+ * sdk-node and sdk-web on purpose - code that signs an order should not have
+ * to know which platform it is running on, which was the whole reason this
+ * exists rather than leaving callers to instantiate a provider whose class
+ * name differs between the two packages.
+ *
+ * @export
+ * @class PayloadHandler
+ */
+export class PayloadHandler extends CorePayloadHandler {
+  constructor() {
+    super(new WebCryptoProvider());
+  }
+}

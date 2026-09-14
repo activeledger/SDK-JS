@@ -54,6 +54,30 @@ for (const type of TYPES) {
     node.verify(data, web.sign(data, web.generate(false, type).prv, type), n.pub, type), false);
 }
 
+// PayloadHandler: the same code on both platforms, and a payload signed on
+// one verifying on the other. The point of the class is that this file could
+// not be written before - the provider class names differ per package.
+{
+  console.log("\nPayloadHandler (arbitrary payloads, e.g. an exchange order)");
+  const { PayloadHandler: WebPayload } = await import("../packages/web/lib/index.js");
+  const nodePkg = await import("../packages/node/lib/index.js");
+  const WebP = new WebPayload();
+  const NodeP = new (nodePkg.default?.PayloadHandler || nodePkg.PayloadHandler)();
+
+  for (const type of TYPES) {
+    const order = { pair: "VNR/USDT", side: "sell", amount: "100" };
+    const w = web.generate(false, type);
+    const key = { name: "maker", type, key: { pub: w.pub, prv: w.prv } };
+
+    check(`${type}: signed in web, verified in node`,
+      NodeP.verify(order, WebP.sign(order, key), w.pub.pkcs8pem, type));
+    check(`${type}: signed in node, verified in web`,
+      WebP.verify(order, NodeP.sign(order, key), w.pub.pkcs8pem, type));
+    check(`${type}: canonical() agrees across packages`,
+      WebP.canonical(order) === NodeP.canonical(order));
+  }
+}
+
 // secp256k1 interop, properly - same key both sides
 {
   console.log("\nsecp256k1 (unchanged behaviour)");
