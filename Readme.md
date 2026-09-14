@@ -160,7 +160,7 @@ An optional BIP-39 passphrase is supported: `generateBIP39Key("mykey", { passphr
 
 ## Development
 
-This is an npm workspaces + lerna monorepo.
+This is an npm workspaces monorepo. Versioning and publishing use `scripts/set-version.mjs` plus `npm publish --workspaces` - see `.github/workflows/publish.yml`.
 
 ```
 $ npm install

@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/sdk-core",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Platform-agnostic core (transaction building, connection, interfaces) shared by @activeledger/sdk-node and @activeledger/sdk-web",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -9,7 +9,15 @@
     "prepublishOnly": "npm run build"
   },
   "homepage": "https://github.com/activeledger/SDK-JS",
-  "keywords": ["activeledger", "sdk", "blockchain", "dlt", "distributed ledger technology", "ledger", "smart contracts"],
+  "keywords": [
+    "activeledger",
+    "sdk",
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/activeledger/SDK-JS.git",
@@ -20,7 +28,9 @@
   },
   "author": "Activeledger",
   "license": "MIT",
-  "files": ["lib"],
+  "files": [
+    "lib"
+  ],
   "dependencies": {
     "axios": "^1.7.0"
   },
