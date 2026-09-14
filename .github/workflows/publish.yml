@@ -122,17 +122,38 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_ACCESS: public
 
-      # The tag on its own leaves nothing under Releases. Same approach as the
-      # main activeledger repo's publish workflow. Tolerates an existing
-      # release so a manual re-run of a published version is not an error.
+      # Which tag are we releasing? On a tag push it is the ref. When
+      # release.yml CALLS this workflow, github.ref is the caller's ref -
+      # refs/heads/master - and not a tag at all, so keying the step off the
+      # ref skipped it silently and v2.1.1 published to npm with no GitHub
+      # release, exactly the problem the step was added to fix.
+      - name: Work out the release tag
+        id: releasetag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ inputs.version }}" ]; then
+            echo "name=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create the GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: steps.releasetag.outputs.name != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.releasetag.outputs.name }}
         run: |
+          # Asked of the remote, not the local clone. This job's checkout is
+          # shallow and, when called from release.yml, happened before that
+          # workflow pushed the tag - so `git rev-parse` here would miss a tag
+          # that exists perfectly well on the remote.
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            echo "::warning::tag $TAG does not exist on the remote - skipping GitHub Release"
+            exit 0
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "release $TAG already exists - leaving it alone"
+            echo "release $TAG already exists - nothing to do"
           else
             gh release create "$TAG" --title "$TAG" --generate-notes
           fi
