@@ -9,6 +9,17 @@ on:
       version:
         description: "Version to publish (e.g. 2.0.1). Leave blank to publish whatever's currently committed in package.json."
         required: false
+  # release.yml calls this directly rather than relying on the tag it pushes
+  # to trigger the `push: tags` above. GitHub does not start new workflow runs
+  # from events created with the default GITHUB_TOKEN, so that tag push is
+  # invisible to this workflow. A workflow_call happens inside the caller's
+  # run, so the restriction does not apply.
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to publish, without the leading v"
+        required: false
+        type: string
 
 permissions:
   # contents: write, not read - the last step creates the GitHub release for
@@ -64,8 +75,12 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: node scripts/set-version.mjs "${GITHUB_REF_NAME#v}"
 
+      # Covers workflow_call from release.yml as well as a manual dispatch -
+      # release.yml has already pushed the bump, so this is a no-op re-apply
+      # there rather than the source of the version, but it keeps a hand
+      # dispatch working the way it always did.
       - name: Set version from workflow input
-        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        if: inputs.version != ''
         run: node scripts/set-version.mjs "${{ inputs.version }}"
 
       - name: Build all packages
