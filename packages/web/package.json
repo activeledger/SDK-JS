@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/sdk-web",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Activeledger SDK for browsers and React Native - secp256k1 signing via @noble/curves (audited, pure JS, no native/WebCrypto dependency)",
   "type": "module",
   "main": "./lib/index.js",
@@ -37,7 +37,7 @@
     "lib"
   ],
   "dependencies": {
-    "@activeledger/sdk-core": "2.1.0",
+    "@activeledger/sdk-core": "2.1.1",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "@noble/post-quantum": "^0.7.1",
