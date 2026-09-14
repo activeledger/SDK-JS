@@ -4,7 +4,7 @@ import { WebCryptoProvider } from "../crypto.js";
  * Post-quantum keys in sdk-web.
  *
  * The cross-package check - a web key verifying in node and the reverse -
- * is scripts/cross-package-pq.mjs rather than a case here. Jest's ESM
+ * is scripts/verify-pq-interop.mjs rather than a case here. Jest's ESM
  * runtime refuses to load sdk-node's CommonJS build because it require()s
  * ESM, which Node itself has done happily since 20.19. Testing the built
  * artifacts under plain node checks what actually ships instead of what
