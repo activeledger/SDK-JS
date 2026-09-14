@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # This package deliberately declares NO engines floor - it is a client
+      # library, and forcing a Node version onto a consumer's application is a
+      # cost the ledger's own >=24 requirement does not justify here.
+      #
+      # That claim is only worth making if it is checked, so the matrix runs
+      # the oldest version the code actually needs alongside current LTS.
+      # 20.19 is the floor because @noble/post-quantum is ESM-only and
+      # require(esm) was unflagged there; 20.18 would genuinely fail.
+      matrix:
+        node: ["20.19", "22", "24"]
+
+    name: node ${{ matrix.node }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # Builds all three packages, runs the core/node Jest suite, the ESM web
+      # suite, then the cross-package interop check - which is plain node
+      # against the BUILT packages, because that is what consumers install and
+      # because Jest's ESM runtime cannot load sdk-node's CommonJS build at
+      # all (it require()s an ESM-only dependency).
+      - run: npm test
