@@ -23,6 +23,8 @@
 
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { ICryptoProvider, IKeyHandleDetails, IKeyHandler } from "@activeledger/sdk-core";
+import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
+import { falcon512 } from "@noble/post-quantum/falcon.js";
 
 const textEncoder = new TextEncoder();
 
@@ -96,8 +98,49 @@ function fromBase64(b64: string): Uint8Array {
  * @export
  * @class WebCryptoProvider
  */
+/**
+ * The post-quantum schemes, keyed by the type string that travels with the
+ * transaction and is stored on the ledger as meta.authorities[].type.
+ *
+ * Deliberately the same table, encoding and entropy handling in both
+ * platform packages: a key generated in a browser has to verify in a node,
+ * and the ledger has to verify both. Keys are base64 rather than the "0x"
+ * hex secp256k1 uses here - they are 897 to 4032 bytes, where hex would cost
+ * a third more for no benefit.
+ */
+const POST_QUANTUM: {
+  [type: string]: {
+    keygen: (seed: Uint8Array) => { publicKey: Uint8Array; secretKey: Uint8Array };
+    sign: (
+      msg: Uint8Array,
+      secretKey: Uint8Array,
+      opts?: { extraEntropy?: Uint8Array | false }
+    ) => Uint8Array;
+    verify: (sig: Uint8Array, msg: Uint8Array, publicKey: Uint8Array) => boolean;
+    // No `signature` length here on purpose: ML-DSA's is fixed at 3309 bytes
+    // but Falcon's varies (649-662), and noble does not declare one for it.
+    lengths: { publicKey: number; secretKey: number; seed: number };
+  };
+} = {
+  "ml-dsa-65": ml_dsa65 as never,
+  "falcon-512": falcon512 as never,
+};
+
 export class WebCryptoProvider implements ICryptoProvider {
-  public generate(compressed?: boolean): IKeyHandler {
+  public generate(compressed?: boolean, type?: string): IKeyHandler {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+    if (pq) {
+      const seed = new Uint8Array(pq.lengths.seed);
+      // WebCrypto rather than node:crypto - this package targets browsers and
+      // React Native, where randomBytes does not exist.
+      crypto.getRandomValues(seed);
+      const keys = pq.keygen(seed);
+      return {
+        prv: { pkcs8pem: toBase64(keys.secretKey) },
+        pub: { pkcs8pem: toBase64(keys.publicKey) },
+      };
+    }
+
     const secretKey = secp256k1.utils.randomSecretKey();
     const publicKey = secp256k1.getPublicKey(secretKey, compressed ? true : false);
 
@@ -107,14 +150,38 @@ export class WebCryptoProvider implements ICryptoProvider {
     };
   }
 
-  public sign(data: string, prv: IKeyHandleDetails): string {
+  public sign(data: string, prv: IKeyHandleDetails, type?: string): string {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+    if (pq) {
+      const entropy = new Uint8Array(pq.lengths.seed);
+      crypto.getRandomValues(entropy);
+      return toBase64(
+        pq.sign(textEncoder.encode(data), fromBase64(prv.pkcs8pem), {
+          extraEntropy: entropy,
+        })
+      );
+    }
+
     const message = textEncoder.encode(data);
     const secretKey = fromHex(prv.pkcs8pem);
     const signature = secp256k1.sign(message, secretKey, { format: "der" });
     return toBase64(signature as Uint8Array);
   }
 
-  public verify(data: string, signature: string, pub: IKeyHandleDetails): boolean {
+  public verify(data: string, signature: string, pub: IKeyHandleDetails, type?: string): boolean {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+    if (pq) {
+      try {
+        return pq.verify(
+          fromBase64(signature),
+          textEncoder.encode(data),
+          fromBase64(pub.pkcs8pem)
+        );
+      } catch {
+        return false;
+      }
+    }
+
     const message = textEncoder.encode(data);
     const publicKey = fromHex(pub.pkcs8pem);
     const sig = fromBase64(signature);

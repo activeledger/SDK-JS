@@ -11,7 +11,18 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules npx jest --config jest.config.mjs"
   },
   "homepage": "https://github.com/activeledger/SDK-JS",
-  "keywords": ["activeledger", "web", "browser", "react-native", "sdk", "blockchain", "dlt", "distributed ledger technology", "ledger", "smart contracts"],
+  "keywords": [
+    "activeledger",
+    "web",
+    "browser",
+    "react-native",
+    "sdk",
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/activeledger/SDK-JS.git",
@@ -22,11 +33,14 @@
   },
   "author": "Activeledger",
   "license": "MIT",
-  "files": ["lib"],
+  "files": [
+    "lib"
+  ],
   "dependencies": {
     "@activeledger/sdk-core": "^2.0.0",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
+    "@noble/post-quantum": "^0.7.1",
     "@scure/bip39": "^2.4.0"
   },
   "devDependencies": {

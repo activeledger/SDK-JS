@@ -9,7 +9,16 @@
     "prepublishOnly": "npm run build"
   },
   "homepage": "https://github.com/activeledger/SDK-JS",
-  "keywords": ["activeledger", "nodejs", "sdk", "blockchain", "dlt", "distributed ledger technology", "ledger", "smart contracts"],
+  "keywords": [
+    "activeledger",
+    "nodejs",
+    "sdk",
+    "blockchain",
+    "dlt",
+    "distributed ledger technology",
+    "ledger",
+    "smart contracts"
+  ],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/activeledger/SDK-JS.git",
@@ -20,9 +29,12 @@
   },
   "author": "Activeledger",
   "license": "MIT",
-  "files": ["lib"],
+  "files": [
+    "lib"
+  ],
   "dependencies": {
     "@activeledger/sdk-core": "^2.0.0",
+    "@noble/post-quantum": "^0.7.1",
     "asn1.js": "^5.4.1",
     "bip39": "3.1.0",
     "eventsource": "^2.0.2"

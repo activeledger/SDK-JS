@@ -45,13 +45,20 @@ export class KeyHandler {
    * @returns {Promise<IKey>} Returns the Key Object
    * @memberof KeyHandler
    */
-  public generateKey(keyName: string, compressed?: boolean): Promise<IKey> {
+  public generateKey(
+    keyName: string,
+    compressed?: boolean,
+    type: KeyType = KeyType.EllipticCurve
+  ): Promise<IKey> {
     return new Promise((resolve, reject) => {
       try {
         const keyHolder: IKey = {
-          key: this.crypto.generate(compressed),
+          // `type` is third rather than second so existing positional calls
+          // - generateKey(name, true) - keep meaning what they did. `compressed`
+          // is a secp256k1 concept and is ignored by the post-quantum schemes.
+          key: this.crypto.generate(compressed, type),
           name: keyName,
-          type: KeyType.EllipticCurve,
+          type,
         };
 
         return resolve(keyHolder);

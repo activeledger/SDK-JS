@@ -24,6 +24,8 @@
 import * as crypto from "crypto";
 import { ICryptoProvider, IKeyHandleDetails, IKeyHandler } from "@activeledger/sdk-core";
 import { AsnParser } from "./asn";
+import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
+import { falcon512 } from "@noble/post-quantum/falcon.js";
 
 /**
  * ICryptoProvider backed entirely by node:crypto's native (OpenSSL) secp256k1
@@ -36,8 +38,45 @@ import { AsnParser } from "./asn";
  * @export
  * @class NodeCryptoProvider
  */
+/**
+ * The post-quantum schemes, keyed by the type string that travels with the
+ * transaction and is stored on the ledger as meta.authorities[].type.
+ *
+ * Deliberately the same table, encoding and entropy handling in both
+ * platform packages: a key generated in a browser has to verify in a node,
+ * and the ledger has to verify both. Keys are base64 rather than the "0x"
+ * hex secp256k1 uses here - they are 897 to 4032 bytes, where hex would cost
+ * a third more for no benefit.
+ */
+const POST_QUANTUM: {
+  [type: string]: {
+    keygen: (seed: Uint8Array) => { publicKey: Uint8Array; secretKey: Uint8Array };
+    sign: (
+      msg: Uint8Array,
+      secretKey: Uint8Array,
+      opts?: { extraEntropy?: Uint8Array | false }
+    ) => Uint8Array;
+    verify: (sig: Uint8Array, msg: Uint8Array, publicKey: Uint8Array) => boolean;
+    // No `signature` length here on purpose: ML-DSA's is fixed at 3309 bytes
+    // but Falcon's varies (649-662), and noble does not declare one for it.
+    lengths: { publicKey: number; secretKey: number; seed: number };
+  };
+} = {
+  "ml-dsa-65": ml_dsa65 as never,
+  "falcon-512": falcon512 as never,
+};
+
 export class NodeCryptoProvider implements ICryptoProvider {
-  public generate(compressed?: boolean): IKeyHandler {
+  public generate(compressed?: boolean, type?: string): IKeyHandler {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+    if (pq) {
+      const keys = pq.keygen(new Uint8Array(crypto.randomBytes(pq.lengths.seed)));
+      return {
+        prv: { pkcs8pem: Buffer.from(keys.secretKey).toString("base64") },
+        pub: { pkcs8pem: Buffer.from(keys.publicKey).toString("base64") },
+      };
+    }
+
     const curve = crypto.createECDH("secp256k1");
     curve.generateKeys();
 
@@ -71,13 +110,42 @@ export class NodeCryptoProvider implements ICryptoProvider {
     return padded;
   }
 
-  public sign(data: string, prv: IKeyHandleDetails): string {
+  public sign(data: string, prv: IKeyHandleDetails, type?: string): string {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+    if (pq) {
+      // Entropy supplied rather than left to noble, which otherwise reads
+      // globalThis.crypto.getRandomValues - not something a library should
+      // depend on being present and unmodified in someone else's process.
+      return Buffer.from(
+        pq.sign(
+          new Uint8Array(Buffer.from(data, "utf8")),
+          new Uint8Array(Buffer.from(prv.pkcs8pem, "base64")),
+          { extraEntropy: new Uint8Array(crypto.randomBytes(pq.lengths.seed)) }
+        )
+      ).toString("base64");
+    }
+
     const sign = crypto.createSign("sha256");
     sign.update(data);
     return Buffer.from(sign.sign(this.toPrivatePem(prv.pkcs8pem), "hex"), "hex").toString("base64");
   }
 
-  public verify(data: string, signature: string, pub: IKeyHandleDetails): boolean {
+  public verify(data: string, signature: string, pub: IKeyHandleDetails, type?: string): boolean {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+    if (pq) {
+      // Never throws: a malformed signature and a wrong one mean the same
+      // thing to a caller.
+      try {
+        return pq.verify(
+          new Uint8Array(Buffer.from(signature, "base64")),
+          new Uint8Array(Buffer.from(data, "utf8")),
+          new Uint8Array(Buffer.from(pub.pkcs8pem, "base64"))
+        );
+      } catch {
+        return false;
+      }
+    }
+
     const verify = crypto.createVerify("sha256");
     verify.update(data);
     return verify.verify(this.toPublicPem(pub.pkcs8pem), Buffer.from(signature, "base64"));

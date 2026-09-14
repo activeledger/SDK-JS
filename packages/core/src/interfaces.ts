@@ -40,9 +40,12 @@ export interface IKeyHandler {
 }
 
 export interface ICryptoProvider {
-  generate(compressed?: boolean): IKeyHandler;
-  sign(data: string, prv: IKeyHandleDetails): string;
-  verify(data: string, signature: string, pub: IKeyHandleDetails): boolean;
+  // `type` is optional and defaults to secp256k1, so an implementation
+  // written before post-quantum support still satisfies this interface and
+  // every existing caller keeps working unchanged.
+  generate(compressed?: boolean, type?: string): IKeyHandler;
+  sign(data: string, prv: IKeyHandleDetails, type?: string): string;
+  verify(data: string, signature: string, pub: IKeyHandleDetails, type?: string): boolean;
 }
 
 // #endregion

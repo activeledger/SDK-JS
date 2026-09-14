@@ -11,6 +11,13 @@
     "strict": true,
     "esModuleInterop": true,
     "moduleResolution": "node",
+    // Do not type check third party .d.ts files. @noble/post-quantum's own
+    // declarations import with explicit ".ts" extensions, which this
+    // moduleResolution rejects (TS2691) even though the emitted JavaScript is
+    // fine and the package works. The alternative - moving the whole repo to
+    // node16/bundler resolution - changes how every import in every package
+    // resolves, to fix type checking of a dependency we do not maintain.
+    "skipLibCheck": true,
     "removeComments": true
   },
   "exclude": ["**/lib/", "**/es/", "**/node_modules/", "**/__tests__/*"]
