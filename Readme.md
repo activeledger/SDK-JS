@@ -10,7 +10,63 @@ Two packages for connecting a JavaScript/TypeScript application to an Activeledg
 | [`@activeledger/sdk-web`](./packages/web)                    | Browsers and React Native                  | [`@noble/curves`](https://github.com/paulmillr/noble-curves) (audited, pure JS, no native dependency) |
 | [`@activeledger/sdk-core`](./packages/core)                   | Shared internals - not installed directly  | -                                                                            |
 
-Both packages share the same API shape (`KeyHandler`, `TransactionHandler`, `Connection`, `LedgerEvents`) and produce SHA-256 + DER ECDSA (secp256k1) signatures that verify identically against the ledger and against each other - a key/signature made with one package works with the other.
+Both packages share the same API shape (`KeyHandler`, `TransactionHandler`, `Connection`, `LedgerEvents`) and produce signatures that verify identically against the ledger and against each other - a key made with one package works with the other.
+
+## Post-quantum keys
+
+**Activeledger identities can be secured against quantum attack today.** As of SDK 2.1.0 and Activeledger 4.7.0, both packages can generate and sign with two post-quantum schemes alongside secp256k1:
+
+| `KeyType`                | Scheme                        | Standard                    | Signature   |
+| ------------------------ | ----------------------------- | --------------------------- | ----------- |
+| `KeyType.MLDSA65`        | ML-DSA-65 (Dilithium)         | **FIPS 204** - finalised    | 3309 bytes  |
+| `KeyType.Falcon512`      | Falcon-512 (FN-DSA)           | Draft                       | 649-662 bytes |
+| `KeyType.EllipticCurve`  | secp256k1 ECDSA               | The default                 | ~71 bytes   |
+
+Selecting one is a single argument - everything after that is unchanged:
+
+```typescript
+import { KeyHandler, KeyType } from "@activeledger/sdk-node";
+// (or "@activeledger/sdk-web" - identical API)
+
+const keys = new KeyHandler();
+
+// Quantum-safe identity. The type is FIXED at creation and recorded on the
+// ledger, so choose it here - an identity cannot be converted later.
+const key = await keys.generateKey("my-key", false, KeyType.MLDSA65);
+await keys.onboardKey(key, connection);
+
+// Nothing else changes. Transactions sign and send exactly as before -
+// TransactionHandler reads the scheme off the key.
+const tx = await new TransactionHandler().labelledTransaction(
+  key, "default", "mycontract", "input", { amount: 1 }, "stream-id",
+);
+await connection.sendTransaction(tx);
+```
+
+The second argument is `compressed`, which only means anything for secp256k1 and is ignored by the post-quantum schemes. It sits before the type so that existing `generateKey(name, true)` calls keep working unchanged.
+
+### Which one should you pick?
+
+**`MLDSA65` unless you have a reason not to.** It is a finalised NIST standard; Falcon is still a draft.
+
+**`Falcon512` when size matters.** Its signatures are roughly a fifth of ML-DSA-65's, and size is not a cosmetic concern here: every signature is broadcast to every node on the network and then stored for the life of the ledger. On a high-volume stream that difference compounds.
+
+Two practical notes:
+
+- **A key's type is permanent.** It is written into the identity's ledger metadata at onboard and every later transaction is verified against it. Moving an identity to a different scheme means onboarding a new identity.
+- **Falcon-512's signature length varies** between 649 and 662 bytes, because its encoding compresses. Do not size buffers or database columns on a fixed width.
+
+Both schemes come from [`@noble/post-quantum`](https://github.com/paulmillr/noble-post-quantum) - pure JavaScript, no native dependency - so the same code runs in Node, in a browser and under React Native. A post-quantum key generated in a browser verifies in Node and on the ledger, which `npm test` checks on every run.
+
+### Requirements
+
+Post-quantum support needs **Node 20.19 or later** (`@noble/post-quantum` is ESM-only, and `require(esm)` was unflagged there). These packages deliberately declare no `engines` floor - forcing a Node version onto your application is not something a client library should do - and CI runs the full suite against Node 20.19, 22 and 24 so that this stays true rather than merely claimed. Browsers and React Native are unaffected.
+
+Your **ledger nodes** must be on **Activeledger 4.7.0 or later** to verify post-quantum signatures. Onboarding a post-quantum identity against an older node will be rejected.
+
+### v2.1.0 - post-quantum keys
+
+Additive; nothing breaks. `ICryptoProvider`'s `generate`/`sign`/`verify` gained an optional `type` defaulting to secp256k1, and `generateKey()` takes the type as its third argument so existing positional calls are unaffected. See [Post-quantum keys](#post-quantum-keys) above.
 
 ### v2.0.0 - breaking change from the old `@activeledger/sdk` package
 
@@ -73,9 +129,13 @@ An optional BIP-39 passphrase is supported: `generateBIP39Key("mykey", { passphr
 
 ### Enums
 
-| Key            | Ref                   |
-| -------------- | --------------------- |
-| Elliptic Curve | `KeyType.EllipticCurve` |
+| Key            | Ref                     | Notes                                |
+| -------------- | ----------------------- | ------------------------------------ |
+| Elliptic Curve | `KeyType.EllipticCurve` | secp256k1 - the default              |
+| ML-DSA-65      | `KeyType.MLDSA65`       | Post-quantum, FIPS 204               |
+| Falcon-512     | `KeyType.Falcon512`     | Post-quantum, smaller signatures     |
+
+`POST_QUANTUM_KEY_TYPES` is also exported, for code that needs to branch on whether a key type is post-quantum.
 
 ### Interfaces
 
@@ -106,9 +166,14 @@ This is an npm workspaces + lerna monorepo.
 $ npm install
 $ npm run build   # builds core, then node, then web, in that order
 $ npm test        # build, then Jest unit tests for all three packages
-$ node scripts/verify-interop.mjs         # cross-package signature compatibility check
+$ node scripts/verify-interop.mjs         # cross-package signature compatibility check (secp256k1)
+$ node scripts/verify-pq-interop.mjs      # the same for post-quantum keys, against the BUILT packages
 $ node scripts/verify-ledger-interop.mjs  # compatibility check against the real ledger crypto (run from a checkout with the main activeledger repo built alongside)
 $ node scripts/verify-bip39.mjs           # BIP-39: cross-package parity + backward compat with the old sdk-bip39 package (needs a sibling ../SDK-NodeJS-BIP39 checkout)
 ```
 
-`sdk-core` and `sdk-node` share `jestconfig.json` at the repo root (plain CommonJS). `sdk-web` has its own `packages/web/jest.config.mjs` and `test` script instead, since its `@noble/curves`/`@scure/bip39` dependencies are ESM-only and can't be `require()`'d from a CommonJS Jest run - it's run separately via `NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs` (Jest's documented mechanism for native ESM support), both invoked automatically by the root `npm test`. Cross-package interop (node<->web signature compatibility, compatibility with the real ledger crypto, BIP-39 backward compatibility with the old add-on) is deliberately left to the three scripts above rather than folded into either package's own Jest suite, since those checks are inherently about two separately-built packages (and in two cases, a second repo) talking to each other - not something either package's isolated unit tests are the right place for.
+`sdk-core` and `sdk-node` share `jestconfig.json` at the repo root (plain CommonJS). That config transforms `@noble/*` into CommonJS rather than trying to `require()` it, and targets es2022 while doing so - at the repo's es2019 target, `@noble/post-quantum` transpiles into something that throws inside its own `_crystals` module. `sdk-web` has its own `packages/web/jest.config.mjs` and `test` script instead, since its `@noble/curves`/`@scure/bip39` dependencies are ESM-only and can't be `require()`'d from a CommonJS Jest run - it's run separately via `NODE_OPTIONS=--experimental-vm-modules jest --config jest.config.mjs` (Jest's documented mechanism for native ESM support), both invoked automatically by the root `npm test`. Cross-package interop (node<->web signature compatibility for both secp256k1 and post-quantum, compatibility with the real ledger crypto, BIP-39 backward compatibility with the old add-on) is deliberately left to the four scripts above rather than folded into either package's own Jest suite, since those checks are inherently about two separately-built packages (and in two cases, a second repo) talking to each other - not something either package's isolated unit tests are the right place for.
+
+The post-quantum interop script in particular runs against the **built** packages rather than through Jest, because that is what consumers install - and because Jest's ESM runtime cannot load `sdk-node`'s CommonJS build at all, since it `require()`s an ESM-only dependency (something Node itself has done fine since 20.19). Testing what ships beat contorting the test runner into loading something else.
+
+CI (`.github/workflows/tests.yml`) runs the whole of `npm test` on Node 20.19, 22 and 24 for every push and pull request.
