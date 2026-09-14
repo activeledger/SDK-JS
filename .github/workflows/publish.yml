@@ -11,7 +11,11 @@ on:
         required: false
 
 permissions:
-  contents: read
+  # contents: write, not read - the last step creates the GitHub release for
+  # the tag. Without it the tag exists and the packages publish, but nothing
+  # appears under Releases, which is how v2.0.2 and v2.1.0 shipped with no
+  # release entry at all.
+  contents: write
   packages: write
 
 jobs:
@@ -50,31 +54,25 @@ jobs:
       # actually published. workflow_dispatch's optional version input
       # covers a manual republish of an arbitrary version without needing a
       # new tag.
+      # scripts/set-version.mjs replaces `lerna version`. It does the same
+      # three things - root version, every package version, and every
+      # dependency range pointing at a sibling rewritten to the exact
+      # version - and the third is the one that is easy to forget and
+      # impossible to notice: npm will happily publish sdk-node depending on
+      # an older sdk-core, and it installs cleanly.
       - name: Set version from tag
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npx lerna version "${GITHUB_REF_NAME#v}" --no-git-tag-version --no-push --force-publish --yes
+        run: node scripts/set-version.mjs "${GITHUB_REF_NAME#v}"
 
       - name: Set version from workflow input
         if: github.event_name == 'workflow_dispatch' && inputs.version != ''
-        run: npx lerna version "${{ inputs.version }}" --no-git-tag-version --no-push --force-publish --yes
-
-      # `lerna version --no-git-tag-version` deliberately leaves the bump as
-      # uncommitted file changes - but `lerna publish` refuses to run
-      # against a dirty tree with no way to opt out. Commit it locally so
-      # the tree is clean for the publish step below; this commit is never
-      # pushed anywhere and only exists in this runner's throwaway checkout.
-      - name: Commit version bump locally (not pushed)
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.version != '')
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore: set version for publish (not pushed)"
+        run: node scripts/set-version.mjs "${{ inputs.version }}"
 
       - name: Build all packages
         run: npm run build
 
       - name: Publish to GitHub Packages
-        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://npm.pkg.github.com/
+        run: npm publish --workspaces --access public --registry https://npm.pkg.github.com/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -95,19 +93,31 @@ jobs:
           registry-url: https://registry.npmjs.org
           scope: "@activeledger"
 
-      # lerna.json's command.publish.access ("public") is also set, but on
-      # its own that wasn't enough for these packages' actual first-ever
-      # publish under these names - failed with "E402 You must sign up for
-      # private packages" (the scoped-package default of restricted access,
-      # since lerna has no --access CLI flag to force it - only
-      # --verify-access/--no-verify-access, a different thing entirely).
-      # NPM_CONFIG_ACCESS is read directly by whatever `npm publish` lerna
-      # shells out to, regardless of whether lerna's own config-translation
-      # layer picks up lerna.json's setting for a truly new package name -
-      # a more reliable belt-and-suspenders than lerna.json alone.
+      # --access public explicitly, plus NPM_CONFIG_ACCESS as a belt and
+      # braces. A scoped package defaults to restricted, and these names'
+      # first-ever publish failed with "E402 You must sign up for private
+      # packages" because of it. The flag alone is enough now lerna (which
+      # had no --access flag, only the differently-named
+      # --verify-access) is out of the chain, but the env var costs nothing
+      # and is what actually fixed it the first time.
       - name: Publish to npmjs.org
         if: ${{ env.NPM_TOKEN_SET == 'true' }}
-        run: npx lerna publish from-package --yes --no-git-tag-version --no-push --registry https://registry.npmjs.org/
+        run: npm publish --workspaces --access public --registry https://registry.npmjs.org/
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_ACCESS: public
+
+      # The tag on its own leaves nothing under Releases. Same approach as the
+      # main activeledger repo's publish workflow. Tolerates an existing
+      # release so a manual re-run of a published version is not an error.
+      - name: Create the GitHub release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists - leaving it alone"
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
