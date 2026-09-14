@@ -1,10 +1,12 @@
 {
   "name": "activeledger-sdk-monorepo",
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "npm run build -w packages/core && npm run build -w packages/node && npm run build -w packages/web",
-    "test": "npm run build && jest --config=jestconfig.json && npm run test -w packages/web",
+    "test": "npm run build && jest --config=jestconfig.json && npm run test -w packages/web && node scripts/cross-package-pq.mjs",
     "format": "prettier --write \"packages/*/src/**/*.ts\"",
     "docs": "typedoc --out ./docs --readme ./Readme.md packages/*/src/index.ts"
   },

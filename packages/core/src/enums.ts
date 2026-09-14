@@ -26,4 +26,25 @@
 // every platform package only needs to implement one curve.
 export enum KeyType {
   EllipticCurve = "secp256k1",
+  /**
+   * ML-DSA-65 (FIPS 204). The conservative post-quantum choice - a finalised
+   * standard, at the cost of 1952 byte public keys and 3309 byte signatures
+   * against secp256k1's 33 and ~71.
+   */
+  MLDSA65 = "ml-dsa-65",
+  /**
+   * Falcon-512 (FN-DSA). Still a draft standard, and roughly a fifth of
+   * ML-DSA-65's signature size - which matters because every signature is
+   * broadcast to every node and then stored for the life of the ledger.
+   *
+   * Its signature length VARIES, 649-662 bytes, because the encoding
+   * compresses. Do not assume a fixed width anywhere.
+   */
+  Falcon512 = "falcon-512",
 }
+
+/** The post-quantum members of KeyType, for code that has to branch on it. */
+export const POST_QUANTUM_KEY_TYPES: readonly KeyType[] = [
+  KeyType.MLDSA65,
+  KeyType.Falcon512,
+];

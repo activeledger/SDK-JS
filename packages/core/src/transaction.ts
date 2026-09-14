@@ -254,7 +254,7 @@ export class TransactionHandler {
       try {
         // Check the transaction type
         if (typeof txBody === "string") {
-          return resolve(this.crypto.sign(txBody, key.key.prv));
+          return resolve(this.crypto.sign(txBody, key.key.prv, key.type));
         } else {
           let identifier = key.name;
 
@@ -264,7 +264,7 @@ export class TransactionHandler {
             identifier = key.identity;
           }
 
-          txBody.$sigs[identifier] = this.crypto.sign(JSON.stringify(txBody.$tx), key.key.prv);
+          txBody.$sigs[identifier] = this.crypto.sign(JSON.stringify(txBody.$tx), key.key.prv, key.type);
 
           return resolve(txBody);
         }

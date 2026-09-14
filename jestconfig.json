@@ -1,8 +1,26 @@
 {
   "preset": "ts-jest",
   "testEnvironment": "node",
-  "testMatch": ["<rootDir>/packages/core/src/**/__tests__/**/*.test.ts", "<rootDir>/packages/node/src/**/__tests__/**/*.test.ts"],
+  "testMatch": [
+    "<rootDir>/packages/core/src/**/__tests__/**/*.test.ts",
+    "<rootDir>/packages/node/src/**/__tests__/**/*.test.ts"
+  ],
   "moduleNameMapper": {
     "^@activeledger/sdk-core$": "<rootDir>/packages/core/src/index.ts"
+  },
+  "transformIgnorePatterns": [
+    "/node_modules/(?!@noble/)"
+  ],
+  "transform": {
+    "^.+\\.[tj]sx?$": [
+      "ts-jest",
+      {
+        "tsconfig": {
+          "allowJs": true,
+          "module": "commonjs",
+          "target": "es2022"
+        }
+      }
+    ]
   }
 }
