@@ -6,7 +6,9 @@
   ],
   "scripts": {
     "build": "npm run build -w packages/core && npm run build -w packages/node && npm run build -w packages/web",
-    "test": "npm run build && jest --config=jestconfig.json && npm run test -w packages/web && node scripts/verify-pq-interop.mjs",
+    "test": "npm run build && jest --config=jestconfig.json && npm run test -w packages/web && node scripts/verify-pq-interop.mjs && node scripts/verify-ledger-interop.mjs && node scripts/verify-vectors.mjs",
+    "vectors": "node scripts/pq-vectors.mjs",
+    "verify:ledger": "node scripts/verify-ledger-interop.mjs",
     "format": "prettier --write \"packages/*/src/**/*.ts\"",
     "docs": "typedoc --out ./docs --readme ./Readme.md packages/*/src/index.ts"
   },
