@@ -225,10 +225,10 @@ for (const v of vectors) {
     // strongest test in the file and it exists only for secp256k1: the
     // post-quantum schemes are hedged, so their vectors can never assert more
     // than "a fresh signature verifies".
-    // The constructed high-S form. Published as bytes so no port has to build
-    // it -- the construction needs the curve order, and a port that sources n
-    // from the wrong place produces an invalid fixture that then passes a
-    // permissive verifier for the wrong reason.
+    // The constructed high-S form. Published as bytes so every port tests the
+    // same thing: `signature` is high-S only when the random k that made it
+    // happened to land there, so filtering for high-S vectors tests whatever
+    // the file happened to contain. This exists for every vector.
     check(!!v.highSSignature, `${label}: publishes a highSSignature`);
     if (v.highSSignature) {
       check(isHighS(v.highSSignature), `${label}: the published high-S form really is high-S`);
