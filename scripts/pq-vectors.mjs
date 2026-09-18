@@ -50,7 +50,12 @@ const EC_FORMS = [
 // type is only rewritten when it is asked for by name.
 //   node scripts/pq-vectors.mjs                  -> everything
 //   node scripts/pq-vectors.mjs secp256k1        -> only secp256k1
-const REQUESTED = process.argv.slice(2);
+const REQUESTED = process.argv.slice(2).filter((a) => a !== "--header-only");
+
+// Rewrites the header from the constant above and leaves every vector byte
+// for byte as it is. For correcting the prose without reissuing signatures
+// that six SDK repositories already check themselves against.
+const HEADER_ONLY = process.argv.includes("--header-only");
 const wanted = (type) => REQUESTED.length === 0 || REQUESTED.includes(type);
 
 // Each case is a $tx object. What actually gets signed is
@@ -155,11 +160,17 @@ const HEADER = [
   "    negated - still valid, still verifying under the same key, and",
   "    guaranteed non-canonical. A port's verification MUST accept it.",
   "",
-  "    That last one is published as bytes rather than left to each port to",
-  "    build, because the construction needs the curve order: a port that",
-  "    sources n from the wrong place produces a fixture that is simply",
-  "    invalid, and which then passes a permissive verifier for the wrong",
-  "    reason - green, and proving nothing.",
+  "    That last one is published as bytes so the coverage does not depend on",
+  "    a lucky draw. `signature` is only high-S when the random k that made it",
+  "    happened to land there - 7 of 12 in one generation, 5 of 12 in the",
+  "    next - so a port filtering for high-S vectors is testing whatever the",
+  "    file happened to contain. `highSSignature` exists for EVERY vector.",
+  "",
+  "    A port CAN build it instead: parse the DER, subtract s from the curve",
+  "    order, re-encode. Using the wrong modulus fails loudly rather than",
+  "    silently - a fixture built with the field prime does not verify at all",
+  "    (measured) - so this is about determinism, not about catching a",
+  "    mistake that would otherwise hide.",
   "",
   "  - So the rule at the top - verify, never compare - applies in full to the",
   "    post-quantum schemes, which are hedged, but only to `signature` here.",
@@ -216,11 +227,11 @@ const isHighS = (signatureBase64) =>
  * the case is available for EVERY vector rather than the subset a random k
  * happened to land high.
  *
- * Published as bytes rather than left to each port to construct. The
- * construction needs the curve order, and a port that sources n from the
- * wrong place produces a fixture that is simply invalid -- which then passes
- * a permissive verifier for the wrong reason, proving nothing while looking
- * green.
+ * Published as bytes so every port tests the same thing, rather than each
+ * building its own. Not because building it is dangerous -- a fixture built
+ * with the wrong modulus simply fails to verify, loudly -- but because
+ * `signature` is high-S only when the random k that produced it happened to
+ * land there, which makes coverage a property of the draw.
  */
 function toHighS(signatureBase64) {
   const der = Buffer.from(signatureBase64, "base64");
@@ -258,7 +269,7 @@ function encodeDer(r, s) {
 
 const vectors = [];
 
-for (const type of PQ_TYPES.filter(wanted)) {
+for (const type of (HEADER_ONLY ? [] : PQ_TYPES).filter(wanted)) {
   const want = EXPECTED[type];
 
   for (const message of MESSAGES) {
@@ -319,7 +330,7 @@ for (const type of PQ_TYPES.filter(wanted)) {
 // is the whole reason these vectors exist: a port that reuses its base64 key
 // path here produces garbage that fails as 1220 and says nothing else.
 // ---------------------------------------------------------------------------
-if (wanted("secp256k1")) {
+if (!HEADER_ONLY && wanted("secp256k1")) {
   for (const { form, compressed, pubChars } of EC_FORMS) {
     for (const message of MESSAGES) {
       const key = provider.generate(compressed, "secp256k1");
@@ -418,7 +429,7 @@ if (wanted("secp256k1")) {
 // gives roughly a 50/50 split, so this is nearly always satisfied - but
 // "nearly always" is not a property to leave to chance in a file six SDKs
 // treat as the definition of correct.
-if (wanted("secp256k1")) {
+if (!HEADER_ONLY && wanted("secp256k1")) {
   const ec = vectors.filter((v) => v.type === "secp256k1");
   const high = ec.filter((v) => isHighS(v.signature)).length;
   const low = ec.length - high;
@@ -441,9 +452,14 @@ if (fs.existsSync(OUT)) {
     // Backfill metadata added after these vectors were first published.
     // Descriptive only - it says how to read the bytes, it does not change
     // them, so the published signatures stay exactly as they were.
-    keyEncoding: "base64",
-    signatureFormat: "raw",
+    //
+    // Spread FIRST so a vector that already carries these keeps its existing
+    // key order. Defaulting ahead of the spread rewrote every entry's key
+    // order on an unrelated edit, which is pure diff noise in a file six
+    // repositories track.
     ...v,
+    keyEncoding: v.keyEncoding ?? "base64",
+    signatureFormat: v.signatureFormat ?? "raw",
   }));
   vectors.unshift(...kept);
 }
