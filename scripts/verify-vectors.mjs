@@ -177,14 +177,17 @@ for (const v of vectors) {
 
   // Both public key forms must be covered: the ledger accepts either, so a
   // port that only ever sees one will not learn to read the other.
-  // The published signatures must cover BOTH S forms. A library that
-  // enforces low-S on verification - which @noble/curves and libsecp256k1 do
-  // by default - rejects roughly half of everything the ledger produces, and
-  // a vector file that happened to contain only low-S signatures would let
-  // such a port pass while being broken in production half the time.
+  // High-S coverage comes from highSSignature, which every vector carries and
+  // which is checked per-vector below. `signature` is NOT required to contain
+  // any: sdk-node normalises S on the way out now, so a regeneration produces
+  // all low-S there.
+  //
+  // The high-S values currently in `signature` predate that change and are
+  // kept deliberately. They are genuine OpenSSL output, and the ledger's own
+  // crypto still signs the same way - so they are what a port will actually
+  // meet in the wild, not a constructed case.
   const highS = ec.filter((v) => isHighS(v.signature)).length;
-  check(highS > 0, "secp256k1 vectors include at least one HIGH-S signature");
-  check(ec.length - highS > 0, "secp256k1 vectors include at least one low-S signature");
+  console.log(`  note: ${highS} of ${ec.length} 'signature' values are high-S`);
 
   const forms = new Set(ec.map((v) => v.publicKeyForm));
   check(forms.has("compressed"), "secp256k1 has compressed public key vectors");

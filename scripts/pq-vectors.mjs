@@ -424,22 +424,15 @@ if (!HEADER_ONLY && wanted("secp256k1")) {
   }
 }
 
-// Both S forms must appear among the secp256k1 vectors, or the file stops
-// catching the single most expensive mistake a port can make here. Random k
-// gives roughly a 50/50 split, so this is nearly always satisfied - but
-// "nearly always" is not a property to leave to chance in a file six SDKs
-// treat as the definition of correct.
+// High-S coverage is guaranteed by highSSignature, which exists for every
+// vector and is asserted high-S at creation. `signature` is no longer
+// required to contain any: sdk-node now normalises S on the way out, so a
+// fresh generation produces all low-S there. Reported rather than enforced.
 if (!HEADER_ONLY && wanted("secp256k1")) {
   const ec = vectors.filter((v) => v.type === "secp256k1");
   const high = ec.filter((v) => isHighS(v.signature)).length;
-  const low = ec.length - high;
-  if (high === 0 || low === 0) {
-    throw new Error(
-      `secp256k1 vectors must include both high-S and low-S signatures, got ` +
-        `${high} high and ${low} low. Re-run to draw a different k.`
-    );
-  }
-  console.log(`  secp256k1 S split: ${high} high, ${low} low`);
+  console.log(`  secp256k1 signature S split: ${high} high, ${ec.length - high} low`);
+  console.log(`  secp256k1 highSSignature: ${ec.length} high-S, one per vector`);
 }
 
 // Keep every vector for a type that was not regenerated this run. The

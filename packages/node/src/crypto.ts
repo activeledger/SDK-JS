@@ -127,7 +127,111 @@ export class NodeCryptoProvider implements ICryptoProvider {
 
     const sign = crypto.createSign("sha256");
     sign.update(data);
-    return Buffer.from(sign.sign(this.toPrivatePem(prv.pkcs8pem), "hex"), "hex").toString("base64");
+    const der = sign.sign(this.toPrivatePem(prv.pkcs8pem));
+
+    return Buffer.from(NodeCryptoProvider.toLowS(der)).toString("base64");
+  }
+
+  /**
+   * secp256k1's group order, and the boundary between low and high S.
+   *
+   * @private
+   */
+  private static readonly SECP256K1_N = BigInt(
+    "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141"
+  );
+
+  /**
+   * Folds S into the lower half of the curve order.
+   *
+   * `(r, s)` and `(r, n - s)` are both valid signatures over the same message
+   * under the same key - ECDSA malleability - so this changes nothing about
+   * validity. OpenSSL does not normalise, and does not require it on verify,
+   * so the ledger accepts either and this is not done for the ledger's sake.
+   *
+   * It is done because everything else in the ecosystem is stricter.
+   * `@noble/curves` - which is what @activeledger/sdk-web signs and verifies
+   * with - REJECTS high-S unless explicitly told not to, as do libsecp256k1
+   * and Rust's k256. Without this, sdk-node emitted high-S roughly half the
+   * time, so a signature made in Node failed against a verifier written with
+   * those defaults about half the time. That presents as intermittent auth or
+   * network trouble rather than as a signature format problem, and it has
+   * already cost one team a live bug.
+   *
+   * It also makes sdk-node and sdk-web produce the same canonical form, which
+   * they previously did not: sdk-web is deterministic and low-S via noble,
+   * sdk-node is random-k through OpenSSL. They remain different signatures for
+   * the same input - only RFC 6979 would change that, and OpenSSL exposes no
+   * way to supply k - but they now agree on which half of the curve S sits in.
+   *
+   * Verification is deliberately NOT changed: it stays permissive, because the
+   * ledger itself still produces high-S and rejecting those would be the same
+   * bug pointed the other way.
+   *
+   * @private
+   */
+  private static toLowS(der: Buffer): Buffer {
+    const { r, s } = NodeCryptoProvider.decodeDer(der);
+    // BigInt(2) rather than 2n: this package targets below ES2020, where the
+    // literal is a compile error, and raising the target would change what
+    // consumers get.
+    if (s <= NodeCryptoProvider.SECP256K1_N / BigInt(2)) {
+      return der;
+    }
+
+    return NodeCryptoProvider.encodeDer(r, NodeCryptoProvider.SECP256K1_N - s);
+  }
+
+  /**
+   * @private
+   */
+  private static decodeDer(der: Buffer): { r: Buffer; s: bigint } {
+    let offset = 2;
+    if (der[offset] !== 0x02) {
+      throw new Error("Malformed ECDSA signature: expected R");
+    }
+    const rLength = der[offset + 1];
+    const r = der.subarray(offset + 2, offset + 2 + rLength);
+
+    offset += 2 + rLength;
+    if (der[offset] !== 0x02) {
+      throw new Error("Malformed ECDSA signature: expected S");
+    }
+    const sBytes = der.subarray(offset + 2, offset + 2 + der[offset + 1]);
+
+    return { r, s: BigInt("0x" + sBytes.toString("hex")) };
+  }
+
+  /**
+   * A DER INTEGER: minimal length, with a leading zero byte when the top bit
+   * is set so the value is not read as negative.
+   *
+   * @private
+   */
+  private static derInteger(value: Buffer): Buffer {
+    let trimmed = value;
+    let start = 0;
+    while (start < trimmed.length - 1 && trimmed[start] === 0) {
+      start++;
+    }
+    trimmed = trimmed.subarray(start);
+    if (trimmed[0] & 0x80) {
+      trimmed = Buffer.concat([Buffer.from([0]), trimmed]);
+    }
+
+    return Buffer.concat([Buffer.from([0x02, trimmed.length]), trimmed]);
+  }
+
+  /**
+   * @private
+   */
+  private static encodeDer(r: Buffer, s: bigint): Buffer {
+    const body = Buffer.concat([
+      NodeCryptoProvider.derInteger(r),
+      NodeCryptoProvider.derInteger(Buffer.from(s.toString(16).padStart(64, "0"), "hex")),
+    ]);
+
+    return Buffer.concat([Buffer.from([0x30, body.length]), body]);
   }
 
   public verify(data: string, signature: string, pub: IKeyHandleDetails, type?: string): boolean {
