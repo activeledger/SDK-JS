@@ -146,12 +146,20 @@ const HEADER = [
   "    high-S signatures. Producing low-S is fine and still verifies;",
   "    REJECTING high-S would reject signatures the ledger itself made.",
   "",
-  "  - TWO signatures are published per secp256k1 vector. `signature` comes",
+  "  - THREE signatures are published per secp256k1 vector. `signature` comes",
   "    from OpenSSL: a random k and whatever S it lands on, which is what the",
   "    ledger itself produces, so a port's VERIFICATION must accept it -",
   "    including the high-S ones. `deterministicSignature` is RFC 6979 with S",
   "    normalised low, and is the exact output a conforming SIGNER must",
-  "    reproduce byte for byte.",
+  "    reproduce byte for byte. `highSSignature` is that same signature with s",
+  "    negated - still valid, still verifying under the same key, and",
+  "    guaranteed non-canonical. A port's verification MUST accept it.",
+  "",
+  "    That last one is published as bytes rather than left to each port to",
+  "    build, because the construction needs the curve order: a port that",
+  "    sources n from the wrong place produces a fixture that is simply",
+  "    invalid, and which then passes a permissive verifier for the wrong",
+  "    reason - green, and proving nothing.",
   "",
   "  - So the rule at the top - verify, never compare - applies in full to the",
   "    post-quantum schemes, which are hedged, but only to `signature` here.",
@@ -198,6 +206,54 @@ function derSignatureS(der) {
 
 const isHighS = (signatureBase64) =>
   derSignatureS(Buffer.from(signatureBase64, "base64")) > SECP256K1_HALF_N;
+
+/**
+ * Builds the high-S form of a signature by negating s.
+ *
+ * `(r, s)` and `(r, n - s)` are both valid signatures over the same message
+ * under the same public key -- that is ECDSA malleability, and it is exactly
+ * the property being tested. So no signing and no private key is needed, and
+ * the case is available for EVERY vector rather than the subset a random k
+ * happened to land high.
+ *
+ * Published as bytes rather than left to each port to construct. The
+ * construction needs the curve order, and a port that sources n from the
+ * wrong place produces a fixture that is simply invalid -- which then passes
+ * a permissive verifier for the wrong reason, proving nothing while looking
+ * green.
+ */
+function toHighS(signatureBase64) {
+  const der = Buffer.from(signatureBase64, "base64");
+
+  let i = 2;
+  if (der[i] !== 0x02) throw new Error("malformed DER: expected R");
+  const rLength = der[i + 1];
+  const r = der.subarray(i + 2, i + 2 + rLength);
+
+  i += 2 + rLength;
+  if (der[i] !== 0x02) throw new Error("malformed DER: expected S");
+  const s = BigInt("0x" + Buffer.from(der.subarray(i + 2, i + 2 + der[i + 1])).toString("hex"));
+
+  return encodeDer(r, SECP256K1_N - s);
+}
+
+/** DER INTEGER: minimal length, leading zero when the top bit is set. */
+function derInteger(bytes) {
+  let value = Buffer.from(bytes);
+  let start = 0;
+  while (start < value.length - 1 && value[start] === 0) start++;
+  value = value.subarray(start);
+  if (value[0] & 0x80) value = Buffer.concat([Buffer.from([0]), value]);
+
+  return Buffer.concat([Buffer.from([0x02, value.length]), value]);
+}
+
+function encodeDer(r, s) {
+  const sBytes = Buffer.from(s.toString(16).padStart(64, "0"), "hex");
+  const body = Buffer.concat([derInteger(r), derInteger(sBytes)]);
+
+  return Buffer.concat([Buffer.from([0x30, body.length]), body]).toString("base64");
+}
 
 
 const vectors = [];
@@ -318,6 +374,24 @@ if (wanted("secp256k1")) {
         throw new Error(`secp256k1 / ${message.name}: generated signature does not verify`);
       }
 
+      // The same signature with s negated: still valid, still verifies under
+      // the same key, and guaranteed non-canonical.
+      const highSSignature = toHighS(deterministicSignature);
+
+      if (highSSignature === deterministicSignature) {
+        throw new Error("secp256k1: negating s produced the same signature");
+      }
+      if (!isHighS(highSSignature)) {
+        throw new Error(
+          "secp256k1: the negated signature is not high-S. If the source was " +
+            "already high-S this produces the LOW form, which would make the " +
+            "fixture a silent duplicate of the low-S case."
+        );
+      }
+      if (!provider.verify(serialised, highSSignature, key.pub, "secp256k1")) {
+        throw new Error("secp256k1: the high-S signature does not verify");
+      }
+
       vectors.push({
         type: "secp256k1",
         keyEncoding: "hex-0x",
@@ -333,6 +407,7 @@ if (wanted("secp256k1")) {
         signature,
         signatureBytes: sigBytes,
         deterministicSignature,
+        highSSignature,
       });
     }
   }

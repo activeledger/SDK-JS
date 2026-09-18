@@ -225,6 +225,28 @@ for (const v of vectors) {
     // strongest test in the file and it exists only for secp256k1: the
     // post-quantum schemes are hedged, so their vectors can never assert more
     // than "a fresh signature verifies".
+    // The constructed high-S form. Published as bytes so no port has to build
+    // it -- the construction needs the curve order, and a port that sources n
+    // from the wrong place produces an invalid fixture that then passes a
+    // permissive verifier for the wrong reason.
+    check(!!v.highSSignature, `${label}: publishes a highSSignature`);
+    if (v.highSSignature) {
+      check(isHighS(v.highSSignature), `${label}: the published high-S form really is high-S`);
+      check(
+        v.highSSignature !== v.deterministicSignature,
+        `${label}: the high-S form differs from the one it was built from`
+      );
+      // The point of it: still a valid signature over the same message.
+      check(
+        provider.verify(v.message, v.highSSignature, { pkcs8pem: v.publicKey }, "secp256k1"),
+        `${label}: the high-S signature verifies`
+      );
+      check(
+        !provider.verify(v.message + " ", v.highSSignature, { pkcs8pem: v.publicKey }, "secp256k1"),
+        `${label}: a tampered message does not verify against the high-S signature`
+      );
+    }
+
     check(!!v.deterministicSignature, `${label}: publishes a deterministicSignature`);
     if (v.deterministicSignature) {
       check(
