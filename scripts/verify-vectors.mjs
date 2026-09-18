@@ -37,9 +37,23 @@ function check(condition, message) {
 
 const b64len = (s) => Buffer.from(s, "base64").length;
 
+/**
+ * Key material as bytes, whichever encoding the vector declares.
+ *
+ * secp256k1 keys are 0x-prefixed hex and the post-quantum ones are base64.
+ * Measuring a hex key with base64 silently returns a plausible-looking wrong
+ * number, which is exactly the class of mistake this file exists to catch.
+ */
+const keyBytes = (value, encoding) =>
+  encoding === "hex-0x"
+    ? Buffer.from(value.replace(/^0x/, ""), "hex").length
+    : b64len(value);
+
 const EXPECTED = {
-  "ml-dsa-65": { pub: 1952, prv: 4032, sig: 3309 },
-  "falcon-512": { pub: 897, prv: 1281, sig: null },
+  "ml-dsa-65": { pub: 1952, prv: 4032, sig: 3309, keyEncoding: "base64" },
+  "falcon-512": { pub: 897, prv: 1281, sig: null, keyEncoding: "base64" },
+  // pub is per-form, so it is checked in the secp256k1 section below.
+  secp256k1: { pub: null, prv: 32, sig: null, keyEncoding: "hex-0x" },
 };
 
 check(vectors.length > 0, "vector file contains vectors");
@@ -61,19 +75,32 @@ for (const v of vectors) {
   check(!!want, `${label}: known key type`);
   if (!want) continue;
 
-  check(b64len(v.publicKey) === want.pub, `${label}: public key is ${want.pub} bytes`);
-  check(b64len(v.privateKey) === want.prv, `${label}: private key is ${want.prv} bytes`);
+  check(
+    v.keyEncoding === want.keyEncoding,
+    `${label}: declares keyEncoding ${want.keyEncoding}`
+  );
+
+  const pubBytes = keyBytes(v.publicKey, v.keyEncoding);
+  const prvBytes = keyBytes(v.privateKey, v.keyEncoding);
+
+  if (want.pub !== null) {
+    check(pubBytes === want.pub, `${label}: public key is ${want.pub} bytes`);
+  }
+  check(prvBytes === want.prv, `${label}: private key is ${want.prv} bytes`);
 
   const sigBytes = b64len(v.signature);
-  if (want.sig !== null) {
+  if (v.type === "secp256k1") {
+    // DER length varies with the size of r and s.
+    check(sigBytes >= 64 && sigBytes <= 72, `${label}: DER signature length ${sigBytes} in 64-72`);
+  } else if (want.sig !== null) {
     check(sigBytes === want.sig, `${label}: signature is ${want.sig} bytes`);
   } else {
     check(sigBytes >= 649 && sigBytes <= 662, `${label}: signature length ${sigBytes} in 649-662`);
   }
 
   // The declared lengths must match the actual bytes. A port may read either.
-  check(v.publicKeyBytes === b64len(v.publicKey), `${label}: declared publicKeyBytes matches`);
-  check(v.privateKeyBytes === b64len(v.privateKey), `${label}: declared privateKeyBytes matches`);
+  check(v.publicKeyBytes === pubBytes, `${label}: declared publicKeyBytes matches`);
+  check(v.privateKeyBytes === prvBytes, `${label}: declared privateKeyBytes matches`);
   check(v.signatureBytes === sigBytes, `${label}: declared signatureBytes matches`);
   check(
     v.messageBytes === Buffer.from(v.message, "utf8").length,
@@ -110,6 +137,51 @@ for (const v of vectors) {
       `${label}: a freshly made signature verifies against the published key`
     );
     check(fresh !== v.signature, `${label}: signing is hedged, so a fresh signature differs`);
+  }
+}
+
+// secp256k1's encoding traps, each one a way a port can look correct against
+// this file while producing keys or signatures the ledger rejects.
+{
+  const ec = vectors.filter((v) => v.type === "secp256k1");
+  check(ec.length > 0, "secp256k1 vectors are present");
+
+  // Both public key forms must be covered: the ledger accepts either, so a
+  // port that only ever sees one will not learn to read the other.
+  const forms = new Set(ec.map((v) => v.publicKeyForm));
+  check(forms.has("compressed"), "secp256k1 has compressed public key vectors");
+  check(forms.has("uncompressed"), "secp256k1 has uncompressed public key vectors");
+
+  for (const v of ec) {
+    const label = `secp256k1 / ${v.messageName} / ${v.publicKeyForm}`;
+
+    // The 0x prefix is part of what the ledger stores, not decoration.
+    check(v.publicKey.startsWith("0x"), `${label}: public key carries the 0x prefix`);
+    check(v.privateKey.startsWith("0x"), `${label}: private key carries the 0x prefix`);
+
+    // 66 = "0x" + 64 hex. node's ECDH.getPrivateKey() strips leading zero
+    // bytes (roughly 1 key in 400); a vector published without left-padding
+    // would teach every port the wrong length.
+    check(v.privateKey.length === 66, `${label}: private key is left-padded to 32 bytes`);
+
+    const expectedPubChars = v.publicKeyForm === "compressed" ? 68 : 132;
+    check(
+      v.publicKey.length === expectedPubChars,
+      `${label}: ${v.publicKeyForm} public key is ${expectedPubChars} chars`
+    );
+
+    // SEC1 point prefix: 02/03 compressed, 04 uncompressed.
+    const prefix = v.publicKey.slice(2, 4);
+    check(
+      v.publicKeyForm === "compressed" ? ["02", "03"].includes(prefix) : prefix === "04",
+      `${label}: SEC1 point prefix ${prefix} matches ${v.publicKeyForm}`
+    );
+
+    // A DER SEQUENCE. A port emitting a raw r||s pair would be rejected by
+    // the ledger with nothing but 1220 to go on.
+    const der = Buffer.from(v.signature, "base64");
+    check(der[0] === 0x30, `${label}: signature is DER (starts 0x30)`);
+    check(der[1] === der.length - 2, `${label}: DER length header matches the body`);
   }
 }
 
