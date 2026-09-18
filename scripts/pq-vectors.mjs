@@ -22,8 +22,16 @@ import { fileURLToPath } from "url";
 
 const require = createRequire(import.meta.url);
 const { NodeCryptoProvider } = require("../packages/node/lib/index.js");
+const { WebCryptoProvider } = require("../packages/web/lib/crypto.js");
 
 const provider = new NodeCryptoProvider();
+
+// sdk-web signs through @noble/curves, which is RFC 6979 deterministic and
+// normalises to low-S. sdk-node signs through OpenSSL, which is neither. Both
+// are valid and the ledger accepts both, so the file publishes both: the
+// OpenSSL one to prove a port's VERIFICATION copes with high-S, and the noble
+// one as the exact bytes a conforming SIGNER must reproduce.
+const deterministicProvider = new WebCryptoProvider();
 const here = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(here, "..", "vectors", "pq-vectors.json");
 
@@ -138,8 +146,18 @@ const HEADER = [
   "    high-S signatures. Producing low-S is fine and still verifies;",
   "    REJECTING high-S would reject signatures the ledger itself made.",
   "",
-  "  - ECDSA here uses a random k, so secp256k1 is non-reproducible too. The",
-  "    rule at the top applies to all three schemes: verify, never compare.",
+  "  - TWO signatures are published per secp256k1 vector. `signature` comes",
+  "    from OpenSSL: a random k and whatever S it lands on, which is what the",
+  "    ledger itself produces, so a port's VERIFICATION must accept it -",
+  "    including the high-S ones. `deterministicSignature` is RFC 6979 with S",
+  "    normalised low, and is the exact output a conforming SIGNER must",
+  "    reproduce byte for byte.",
+  "",
+  "  - So the rule at the top - verify, never compare - applies in full to the",
+  "    post-quantum schemes, which are hedged, but only to `signature` here.",
+  "    Compare your signer against `deterministicSignature`: ECDSA has no",
+  "    reason to be hedged, and an exact comparison catches a low-S mistake",
+  "    that a verify-round-trip test cannot see at all.",
   "",
   "  - The ledger also accepts the type strings `bitcoin` and `ethereum`,",
   "    routed to identical secp256k1 verification. Ports should parse them as",
@@ -152,6 +170,35 @@ const EXPECTED = {
 };
 
 const b64len = (s) => Buffer.from(s, "base64").length;
+
+// secp256k1's group order, and the halfway point that divides "low S" from
+// "high S".
+const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+const SECP256K1_HALF_N = SECP256K1_N / 2n;
+
+/**
+ * Pulls S out of a DER ECDSA signature.
+ *
+ * Only needed to tell high-S signatures from low-S ones, which matters more
+ * than it sounds: several libraries REJECT high-S by default (@noble/curves
+ * and libsecp256k1 among them), while the ledger verifies through OpenSSL,
+ * which neither normalises nor requires it. A port that inherits its
+ * library's default silently rejects about half of all valid ledger
+ * signatures - an intermittent failure that looks like anything but a
+ * configuration flag.
+ */
+function derSignatureS(der) {
+  let i = 2;
+  if (der[i] !== 0x02) throw new Error("malformed DER: expected R");
+  i += 2 + der[i + 1];
+  if (der[i] !== 0x02) throw new Error("malformed DER: expected S");
+  const s = der.subarray(i + 2, i + 2 + der[i + 1]);
+  return BigInt("0x" + Buffer.from(s).toString("hex"));
+}
+
+const isHighS = (signatureBase64) =>
+  derSignatureS(Buffer.from(signatureBase64, "base64")) > SECP256K1_HALF_N;
+
 
 const vectors = [];
 
@@ -231,6 +278,18 @@ if (wanted("secp256k1")) {
       const signature = provider.sign(serialised, key.prv, "secp256k1");
       const sigBytes = b64len(signature);
 
+      // What a conforming signer must produce, byte for byte.
+      const deterministicSignature = deterministicProvider.sign(serialised, key.prv, "secp256k1");
+      if (deterministicSignature !== deterministicProvider.sign(serialised, key.prv, "secp256k1")) {
+        throw new Error("secp256k1: the deterministic signer is not deterministic");
+      }
+      if (isHighS(deterministicSignature)) {
+        throw new Error("secp256k1: the deterministic signature is high-S, it must be normalised");
+      }
+      if (!provider.verify(serialised, deterministicSignature, key.pub, "secp256k1")) {
+        throw new Error("secp256k1: the deterministic signature does not verify under OpenSSL");
+      }
+
       // Fail loudly at generation rather than publishing a bad vector that
       // every port then inherits as gospel.
       if (key.pub.pkcs8pem.length !== pubChars) {
@@ -273,9 +332,28 @@ if (wanted("secp256k1")) {
         privateKeyBytes: 32,
         signature,
         signatureBytes: sigBytes,
+        deterministicSignature,
       });
     }
   }
+}
+
+// Both S forms must appear among the secp256k1 vectors, or the file stops
+// catching the single most expensive mistake a port can make here. Random k
+// gives roughly a 50/50 split, so this is nearly always satisfied - but
+// "nearly always" is not a property to leave to chance in a file six SDKs
+// treat as the definition of correct.
+if (wanted("secp256k1")) {
+  const ec = vectors.filter((v) => v.type === "secp256k1");
+  const high = ec.filter((v) => isHighS(v.signature)).length;
+  const low = ec.length - high;
+  if (high === 0 || low === 0) {
+    throw new Error(
+      `secp256k1 vectors must include both high-S and low-S signatures, got ` +
+        `${high} high and ${low} low. Re-run to draw a different k.`
+    );
+  }
+  console.log(`  secp256k1 S split: ${high} high, ${low} low`);
 }
 
 // Keep every vector for a type that was not regenerated this run. The

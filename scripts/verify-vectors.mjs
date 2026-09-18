@@ -37,6 +37,35 @@ function check(condition, message) {
 
 const b64len = (s) => Buffer.from(s, "base64").length;
 
+// secp256k1's group order, and the halfway point that divides "low S" from
+// "high S".
+const SECP256K1_N = BigInt("0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+const SECP256K1_HALF_N = SECP256K1_N / 2n;
+
+/**
+ * Pulls S out of a DER ECDSA signature.
+ *
+ * Only needed to tell high-S signatures from low-S ones, which matters more
+ * than it sounds: several libraries REJECT high-S by default (@noble/curves
+ * and libsecp256k1 among them), while the ledger verifies through OpenSSL,
+ * which neither normalises nor requires it. A port that inherits its
+ * library's default silently rejects about half of all valid ledger
+ * signatures - an intermittent failure that looks like anything but a
+ * configuration flag.
+ */
+function derSignatureS(der) {
+  let i = 2;
+  if (der[i] !== 0x02) throw new Error("malformed DER: expected R");
+  i += 2 + der[i + 1];
+  if (der[i] !== 0x02) throw new Error("malformed DER: expected S");
+  const s = der.subarray(i + 2, i + 2 + der[i + 1]);
+  return BigInt("0x" + Buffer.from(s).toString("hex"));
+}
+
+const isHighS = (signatureBase64) =>
+  derSignatureS(Buffer.from(signatureBase64, "base64")) > SECP256K1_HALF_N;
+
+
 /**
  * Key material as bytes, whichever encoding the vector declares.
  *
@@ -148,6 +177,15 @@ for (const v of vectors) {
 
   // Both public key forms must be covered: the ledger accepts either, so a
   // port that only ever sees one will not learn to read the other.
+  // The published signatures must cover BOTH S forms. A library that
+  // enforces low-S on verification - which @noble/curves and libsecp256k1 do
+  // by default - rejects roughly half of everything the ledger produces, and
+  // a vector file that happened to contain only low-S signatures would let
+  // such a port pass while being broken in production half the time.
+  const highS = ec.filter((v) => isHighS(v.signature)).length;
+  check(highS > 0, "secp256k1 vectors include at least one HIGH-S signature");
+  check(ec.length - highS > 0, "secp256k1 vectors include at least one low-S signature");
+
   const forms = new Set(ec.map((v) => v.publicKeyForm));
   check(forms.has("compressed"), "secp256k1 has compressed public key vectors");
   check(forms.has("uncompressed"), "secp256k1 has uncompressed public key vectors");
@@ -182,6 +220,26 @@ for (const v of vectors) {
     const der = Buffer.from(v.signature, "base64");
     check(der[0] === 0x30, `${label}: signature is DER (starts 0x30)`);
     check(der[1] === der.length - 2, `${label}: DER length header matches the body`);
+
+    // The bytes a conforming signer must reproduce exactly. This is the
+    // strongest test in the file and it exists only for secp256k1: the
+    // post-quantum schemes are hedged, so their vectors can never assert more
+    // than "a fresh signature verifies".
+    check(!!v.deterministicSignature, `${label}: publishes a deterministicSignature`);
+    if (v.deterministicSignature) {
+      check(
+        !isHighS(v.deterministicSignature),
+        `${label}: the deterministic signature is low-S`
+      );
+      check(
+        provider.verify(v.message, v.deterministicSignature, { pkcs8pem: v.publicKey }, "secp256k1"),
+        `${label}: the deterministic signature verifies`
+      );
+      check(
+        !provider.verify(v.message + " ", v.deterministicSignature, { pkcs8pem: v.publicKey }, "secp256k1"),
+        `${label}: a tampered message does not verify against the deterministic signature`
+      );
+    }
   }
 }
 
