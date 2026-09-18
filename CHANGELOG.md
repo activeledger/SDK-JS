@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0]
+
+### Added
+
+- `PayloadHandler` - signing and verifying arbitrary payloads (an exchange order, an attestation, an auth challenge) rather than transactions. Same class name and shape in `@activeledger/sdk-node` and `@activeledger/sdk-web`.
+
+  ```ts
+  const payload = new PayloadHandler();
+  const signature = payload.sign(order, key);
+  payload.verify(order, signature, publicKey, type);
+  ```
+
+  This was possible before by instantiating the platform's crypto provider directly, and those are public. What it was not was portable: every other class in this SDK is named the same in both packages, but the providers are `NodeCryptoProvider` and `WebCryptoProvider`, so a client shared between a server and a browser could not sign a payload with one piece of code.
+
+- `PayloadHandler.canonical(payload)` returns the exact string that gets signed, so an application can store it alongside the signature and verify that rather than re-deriving it. `JSON.stringify` is key-order sensitive, so a payload rebuilt field by field before verification - by a normaliser, a defaulter, an ORM, a DTO mapper - produces different bytes and a signature that will not verify, presenting as a bad signature rather than an encoding problem. Verifying the stored string is immune to it.
+
 ## [2.1.0]
 
 ### Added

@@ -58,6 +58,41 @@ Two practical notes:
 
 Both schemes come from [`@noble/post-quantum`](https://github.com/paulmillr/noble-post-quantum) - pure JavaScript, no native dependency - so the same code runs in Node, in a browser and under React Native. A post-quantum key generated in a browser verifies in Node and on the ledger, which `npm test` checks on every run.
 
+### Signing something that isn't a transaction
+
+An exchange order, an attestation, an auth challenge - anything you need
+signed by an identity but not submitted as a transaction:
+
+```typescript
+import { KeyHandler, PayloadHandler, KeyType } from "@activeledger/sdk-node";
+// (or "@activeledger/sdk-web" - same class, same shape)
+
+const payload = new PayloadHandler();
+const key = await new KeyHandler().generateKey("maker", false, KeyType.MLDSA65);
+
+const order = { pair: "VNR/USDT", side: "sell", amount: "100" };
+const signature = payload.sign(order, key);
+
+// Verifying happens somewhere else, usually with only the public key and
+// scheme - off a ledger authority, say - and no private key at all.
+payload.verify(order, signature, key.key.pub.pkcs8pem, key.type); // true
+```
+
+**Store `payload.canonical(order)` next to the signature and verify that.**
+It returns the exact string being signed, and `JSON.stringify` is key-order
+sensitive:
+
+```typescript
+payload.canonical({ pair: "VNR/USDT", side: "sell" }); // {"pair":"VNR/USDT","side":"sell"}
+payload.canonical({ side: "sell", pair: "VNR/USDT" }); // {"side":"sell","pair":"VNR/USDT"}
+```
+
+Same fields, different bytes, and the signature won't verify. That's safe
+while a payload round-trips as JSON, because key order survives - and stops
+being safe the moment anything rebuilds the object field by field first: a
+normaliser, a defaulter filling in optional fields, an ORM, a DTO mapper. The
+failure then looks like a bad signature rather than an encoding problem.
+
 ### Requirements
 
 Post-quantum support needs **Node 20.19 or later** (`@noble/post-quantum` is ESM-only, and `require(esm)` was unflagged there). These packages deliberately declare no `engines` floor - forcing a Node version onto your application is not something a client library should do - and CI runs the full suite against Node 20.19, 22 and 24 so that this stays true rather than merely claimed. Browsers and React Native are unaffected.
@@ -155,6 +190,7 @@ An optional BIP-39 passphrase is supported: `generateBIP39Key("mykey", { passphr
 | ---------------------- | ---------------------------------------------------------- |
 | `Connection`           | Handles connecting to and posting transactions to a node    |
 | `KeyHandler`           | Key generation and onboarding                               |
+| `PayloadHandler`       | Signing and verifying arbitrary payloads (not transactions) |
 | `TransactionHandler`   | Transaction building and signing                             |
 | `LedgerEvents`         | SSE subscriptions to ActiveCore's events API                 |
 
