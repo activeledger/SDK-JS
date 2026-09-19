@@ -21,6 +21,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `PayloadHandler.canonical(payload)` returns the exact string that gets signed, so an application can store it alongside the signature and verify that rather than re-deriving it. `JSON.stringify` is key-order sensitive, so a payload rebuilt field by field before verification - by a normaliser, a defaulter, an ORM, a DTO mapper - produces different bytes and a signature that will not verify, presenting as a bad signature rather than an encoding problem. Verifying the stored string is immune to it.
 
+- `generateKeyFromSeed(name, seed, compressed?, type?)` - derive a key from the algorithm's own seed. No KDF: 32 bytes for `secp256k1` and `ml-dsa-65`, 48 for `falcon-512`, and a wrong length is refused rather than padded, because a padded seed is a different identity rather than a malformed one.
+
+  This is how a private key moves between Activeledger SDKs. The PHP SDK's `ml-dsa-65` private key **is** a 32-byte seed - `paragonie/pqcrypto_compat` implements FIPS 204 key generation from a seed but not `skEncode`/`skDecode` - so the 4032-byte encoding this SDK exports cannot be loaded there at all. The seed can be, and gives an identical public key.
+
+- `restoreBIP39Key` now takes a `type`, so one recovery phrase can back a `secp256k1`, an `ml-dsa-65` and a `falcon-512` identity at once. Each derives its own seed, so none of them reveals the others.
+
+  | Type | Seed from the BIP-39 seed `S` |
+  | --- | --- |
+  | `secp256k1` | `HMAC-SHA512("Bitcoin seed", S)[0..32]` |
+  | `ml-dsa-65` | `HKDF-SHA512(S, salt="", info="activeledger-seed-v1:ml-dsa-65", 32)` |
+  | `falcon-512` | `HKDF-SHA512(S, salt="", info="activeledger-seed-v1:falcon-512", 48)` |
+
+- `vectors/seed-vectors.json` - the derivation published with cross-language vectors, including invalid seeds a port must refuse.
+
+### Changed
+
+- `restoreBIP39Key` for `secp256k1` is **unchanged**, deliberately. Both packages have shipped that derivation since before the post-quantum types existed, so phrases are already in use, and moving it onto HKDF would hand every one of those users a different key for a phrase that used to work - not an error, just an identity that is no longer theirs. `verify-seed-vectors.mjs` checks all 14 `secp256k1` vectors against the live `restoreBIP39Key`, so changing it fails the build rather than happening quietly.
+
+- `{ legacy: true }` is now refused for a post-quantum type rather than silently ignored, since ignoring it would return a modern-derivation key to a caller who believed they were recovering an old one.
+
+- `ICryptoProvider.generateFromSeed` is optional, so a provider written before this still satisfies the interface. Its absence is reported by name rather than as "not a function".
+
 ## [2.1.0]
 
 ### Added
