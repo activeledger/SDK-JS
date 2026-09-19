@@ -150,6 +150,54 @@ export class WebCryptoProvider implements ICryptoProvider {
     };
   }
 
+  /**
+   * Derive a key pair from the algorithm's own seed. No KDF, no phrase - the
+   * bytes given are the seed the scheme itself takes.
+   *
+   * Byte-for-byte identical to sdk-node's, which is the point: a seed is the
+   * one private-key form every Activeledger SDK can agree on, including PHP,
+   * whose ml-dsa-65 private key IS a 32-byte seed.
+   */
+  public generateFromSeed(seed: Uint8Array, compressed?: boolean, type?: string): IKeyHandler {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+
+    if (pq) {
+      // Refused rather than padded. A seed of the wrong length is a
+      // different identity, not a malformed one.
+      if (seed.length !== pq.lengths.seed) {
+        throw new Error(`${type} needs a ${pq.lengths.seed}-byte seed, got ${seed.length}`);
+      }
+
+      const keys = pq.keygen(seed);
+      return {
+        prv: { pkcs8pem: toBase64(keys.secretKey) },
+        pub: { pkcs8pem: toBase64(keys.publicKey) },
+      };
+    }
+
+    if (seed.length !== 32) {
+      throw new Error(`secp256k1 needs a 32-byte seed, got ${seed.length}`);
+    }
+
+    // @noble/curves refuses a scalar outside [1, n-1] rather than reducing
+    // it, which is the behaviour wanted here - a reduced scalar is a working
+    // key for someone else's identity. Re-thrown with the seed named, since
+    // noble's own message does not mention where the bytes came from.
+    let publicKey: Uint8Array;
+    try {
+      publicKey = secp256k1.getPublicKey(seed, compressed ? true : false);
+    } catch {
+      throw new Error(
+        "seed is not a valid secp256k1 private key - the scalar must be in [1, n-1]",
+      );
+    }
+
+    return {
+      prv: { pkcs8pem: "0x" + toHex(seed) },
+      pub: { pkcs8pem: "0x" + toHex(publicKey) },
+    };
+  }
+
   public sign(data: string, prv: IKeyHandleDetails, type?: string): string {
     const pq = type ? POST_QUANTUM[type] : undefined;
     if (pq) {

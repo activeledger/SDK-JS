@@ -69,6 +69,52 @@ export class KeyHandler {
   }
 
   /**
+   * Recreate a key from the algorithm's own seed.
+   *
+   * No key derivation function is applied: the bytes given are the seed the
+   * scheme itself takes - 32 for secp256k1 and ml-dsa-65, 48 for falcon-512.
+   * The same seed produces the same identity in every Activeledger SDK, which
+   * makes a seed the one private-key format all of them can exchange. For a
+   * recovery phrase rather than raw bytes, use restoreBIP39Key in
+   * @activeledger/sdk-node or sdk-web.
+   *
+   * @param {string} keyName - The name of the key
+   * @param {Uint8Array} seed - The algorithm's seed, at its exact length
+   * @param {boolean} [compressed] - Return a compressed public key (secp256k1 only)
+   * @param {KeyType} [type] - Defaults to secp256k1
+   * @returns {Promise<IKey>} Returns the Key Object
+   * @memberof KeyHandler
+   */
+  public generateKeyFromSeed(
+    keyName: string,
+    seed: Uint8Array,
+    compressed?: boolean,
+    type: KeyType = KeyType.EllipticCurve
+  ): Promise<IKey> {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!this.crypto.generateFromSeed) {
+          // Named rather than left as "generateFromSeed is not a function".
+          // The provider is supplied by the caller, so the fix is theirs.
+          return reject(
+            new Error(
+              "This crypto provider does not implement generateFromSeed - it predates seed support"
+            )
+          );
+        }
+
+        return resolve({
+          key: this.crypto.generateFromSeed(seed, compressed, type),
+          name: keyName,
+          type,
+        });
+      } catch (error) {
+        return reject(error);
+      }
+    });
+  }
+
+  /**
    * Onboard a key to the ledger and assign an identity to the key
    *
    * @param {IKey} key - The key to onboard

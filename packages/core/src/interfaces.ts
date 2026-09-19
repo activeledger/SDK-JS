@@ -44,6 +44,18 @@ export interface ICryptoProvider {
   // written before post-quantum support still satisfies this interface and
   // every existing caller keeps working unchanged.
   generate(compressed?: boolean, type?: string): IKeyHandler;
+  /**
+   * Derive a key pair from the algorithm's own seed, with no KDF applied.
+   *
+   * Optional for the same reason `type` is: a provider written before this
+   * existed still satisfies the interface. KeyHandler reports its absence by
+   * name rather than failing on an undefined call.
+   *
+   * The seed length is fixed per algorithm - 32 bytes for secp256k1 and
+   * ml-dsa-65, 48 for falcon-512 - and a wrong length must be refused, never
+   * padded or truncated into a different identity.
+   */
+  generateFromSeed?(seed: Uint8Array, compressed?: boolean, type?: string): IKeyHandler;
   sign(data: string, prv: IKeyHandleDetails, type?: string): string;
   verify(data: string, signature: string, pub: IKeyHandleDetails, type?: string): boolean;
 }
