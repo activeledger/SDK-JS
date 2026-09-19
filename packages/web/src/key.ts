@@ -24,6 +24,7 @@
 import { generateMnemonic, mnemonicToSeedSync } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { hmac } from "@noble/hashes/hmac.js";
+import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { KeyHandler as CoreKeyHandler, KeyType } from "@activeledger/sdk-core";
@@ -39,8 +40,13 @@ const textEncoder = new TextEncoder();
  * @class KeyHandler
  */
 export class KeyHandler extends CoreKeyHandler {
+  /** Kept here as well as passed up, since the base class holds it privately. */
+  private readonly provider: WebCryptoProvider;
+
   constructor() {
-    super(new WebCryptoProvider());
+    const provider = new WebCryptoProvider();
+    super(provider);
+    this.provider = provider;
   }
 
   /**
@@ -82,19 +88,26 @@ export class KeyHandler extends CoreKeyHandler {
   public restoreBIP39Key(keyName: string, phrase: string, options: IBIP39Options = {}): Promise<IKeyExtended> {
     return new Promise((resolve, reject) => {
       try {
-        const privateKey = options.legacy
-          ? sha256(textEncoder.encode(phrase))
-          : this.deriveBIP32MasterKey(mnemonicToSeedSync(phrase, options.passphrase || ""));
+        const type = options.type || KeyType.EllipticCurve;
 
-        const publicKey = secp256k1.getPublicKey(privateKey, options.compressed ? true : false);
+        if (options.legacy && type !== KeyType.EllipticCurve) {
+          // The legacy scheme produces a 32-byte scalar and nothing else.
+          // Silently ignoring it for a post-quantum type would hand back a
+          // key from the modern derivation while the caller believed they
+          // were recovering an old one.
+          return reject(
+            new Error(`The legacy BIP-39 scheme is secp256k1 only - it cannot derive ${type}`)
+          );
+        }
+
+        const seed = options.legacy
+          ? sha256(textEncoder.encode(phrase))
+          : this.deriveSeed(type, mnemonicToSeedSync(phrase, options.passphrase || ""));
 
         const keyHolder: IKeyExtended = {
-          key: {
-            pub: { pkcs8pem: "0x" + toHex(publicKey) },
-            prv: { pkcs8pem: "0x" + toHex(privateKey) },
-          },
+          key: this.provider.generateFromSeed(seed, options.compressed, type),
           name: keyName,
-          type: KeyType.EllipticCurve,
+          type,
           phrase,
         };
 
@@ -103,6 +116,33 @@ export class KeyHandler extends CoreKeyHandler {
         reject(error);
       }
     });
+  }
+
+  /**
+   * Turn a BIP-39 seed into the seed the requested algorithm takes.
+   *
+   * Byte-for-byte identical to sdk-node's, and the secp256k1 branch must
+   * never change: both packages have shipped it since before the
+   * post-quantum types existed, so phrases are already in use. Moving it
+   * onto HKDF would hand every one of those users a different key for a
+   * phrase that used to work - not an error, just an identity that is no
+   * longer theirs.
+   *
+   * Published, with vectors, in vectors/seed-vectors.json.
+   *
+   * @private
+   */
+  private deriveSeed(type: KeyType, bip39Seed: Uint8Array): Uint8Array {
+    if (type === KeyType.EllipticCurve) {
+      return this.deriveBIP32MasterKey(bip39Seed);
+    }
+
+    const length = type === KeyType.Falcon512 ? 48 : 32;
+
+    // An empty salt is a block of zero bytes of the hash length - what RFC
+    // 5869 specifies, and what node's crypto.hkdfSync does, so the two
+    // packages agree byte for byte.
+    return hkdf(sha512, bip39Seed, new Uint8Array(0), textEncoder.encode(`activeledger-seed-v1:${type}`), length);
   }
 
   /**

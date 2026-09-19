@@ -97,6 +97,67 @@ export class NodeCryptoProvider implements ICryptoProvider {
   }
 
   /**
+   * Derive a key pair from the algorithm's own seed. No KDF, no phrase - the
+   * bytes given are the seed the scheme itself takes.
+   *
+   * This is what makes a private key portable between SDKs. The PHP SDK's
+   * ml-dsa-65 private key IS a 32-byte seed, because its library implements
+   * FIPS 204 key generation from a seed but not skEncode/skDecode, so the
+   * 4032-byte encoding this SDK exports cannot be loaded there at all. A
+   * seed is the one form all of them agree on.
+   *
+   * For recovery-phrase derivation see KeyHandler.restoreBIP39Key, which
+   * turns a phrase into the right seed for the requested type and then calls
+   * this.
+   */
+  public generateFromSeed(seed: Uint8Array, compressed?: boolean, type?: string): IKeyHandler {
+    const pq = type ? POST_QUANTUM[type] : undefined;
+
+    if (pq) {
+      // Refused rather than padded. A seed of the wrong length is a different
+      // identity, and a library that accepts it returns a working key that
+      // is not the one the caller asked for.
+      if (seed.length !== pq.lengths.seed) {
+        throw new Error(`${type} needs a ${pq.lengths.seed}-byte seed, got ${seed.length}`);
+      }
+
+      const keys = pq.keygen(seed);
+      return {
+        prv: { pkcs8pem: Buffer.from(keys.secretKey).toString("base64") },
+        pub: { pkcs8pem: Buffer.from(keys.publicKey).toString("base64") },
+      };
+    }
+
+    // secp256k1: the seed IS the scalar, so it has to be a valid one.
+    if (seed.length !== 32) {
+      throw new Error(`secp256k1 needs a 32-byte seed, got ${seed.length}`);
+    }
+
+    const scalar = BigInt("0x" + Buffer.from(seed).toString("hex"));
+    if (scalar === BigInt(0) || scalar >= NodeCryptoProvider.SECP256K1_N) {
+      // Refused, not reduced mod n. Reducing produces a perfectly functional
+      // key belonging to a different identity, and nothing downstream ever
+      // reports a problem.
+      throw new Error(
+        "seed is not a valid secp256k1 private key - the scalar must be in [1, n-1]",
+      );
+    }
+
+    const curve = crypto.createECDH("secp256k1");
+    curve.setPrivateKey(Buffer.from(seed));
+
+    return {
+      // The seed itself, not curve.getPrivateKey(), which strips leading
+      // zero bytes - see generate() above.
+      prv: { pkcs8pem: "0x" + Buffer.from(seed).toString("hex") },
+      pub: {
+        pkcs8pem:
+          "0x" + curve.getPublicKey("hex", compressed ? "compressed" : "uncompressed"),
+      },
+    };
+  }
+
+  /**
    * Left-pad a big-endian scalar to a fixed byte length.
    *
    * @private
