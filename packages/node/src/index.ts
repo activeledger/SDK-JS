@@ -30,4 +30,5 @@ export * from "./crypto";
 export * from "./interfaces";
 export { KeyHandler } from "./key";
 export { TransactionHandler } from "./transaction";
+export { PayloadHandler } from "./payload";
 export { LedgerEvents } from "./events";
