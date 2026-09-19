@@ -200,6 +200,13 @@ Each type derives its own seed, so none of them reveals the others:
 
 The full derivation, both layers, and the cross-language vectors are published in [`vectors/seed-vectors.json`](vectors/seed-vectors.json).
 
+> [!IMPORTANT]
+> **`activeledger-seed-v1` is not the only phrase derivation in use.** Varnir's chain-client ships its own — live since Activeledger 4.7.0 — and it differs for every key type: `HKDF-SHA256` with `varnir/pq-keygen/v1:<type>` for the post-quantum schemes, and a BIP-32 child at `m/44'/1'/0'/0/0` for `secp256k1` rather than the master key.
+>
+> Both start from the same BIP-39 seed, so the same twelve words give a **different identity** under each, with no error anywhere. Do not "unify" them: identities exist on both sides whose only backup is a phrase.
+>
+> You do not need to implement anyone else's scheme to interoperate. `generateKeyFromSeed` takes the algorithm's seed, so any derivation can be done by the caller and handed in — verified to reproduce a Varnir key exactly.
+
 ### Enums
 
 | Key            | Ref                     | Notes                                |
