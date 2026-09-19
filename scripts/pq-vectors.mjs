@@ -8,12 +8,23 @@
 //
 // Regenerate with: npm run vectors
 //
-// KEY BYTES, NOT SEEDS - this matters and is not an arbitrary choice.
-// ml-dsa-65 derives its key pair deterministically from a 32-byte seed, so a
-// seed would be enough for it. falcon-512 does NOT: its key generation is
-// implementation-specific, so the same seed produces different keys in
-// different libraries. A seed-based vector file would therefore be unusable
-// from Kotlin, Python or Go, which is precisely who it is for.
+// KEY BYTES, NOT SEEDS - but not for the reason previously given here.
+//
+// This file used to claim falcon-512 keygen is implementation-specific, so
+// that a seed would give different keys in different libraries. That is
+// WRONG, and it was measured wrong: given the same 48-byte seed,
+// @noble/post-quantum and BouncyCastle produce byte-identical falcon-512
+// keys, checked with two different seeds and across the full 896 bytes.
+// ml-dsa-65 is likewise portable from its 32-byte seed - noble and Rust's
+// fips204 agree exactly.
+//
+// Key bytes are still what gets published, for a duller reason: they are
+// what a port actually handles. A port reads and writes key BYTES from the
+// ledger, so vectors in that form test the path it really uses. Seeds would
+// test a derivation step most SDKs do not currently expose at all.
+//
+// The correction matters because the old claim argued against seeded
+// keygen, which is exactly what recovery-phrase support needs.
 
 import { createRequire } from "module";
 import * as fs from "fs";
@@ -120,10 +131,16 @@ const HEADER = [
   "valid signatures. A port should be hedged too, seeded from its own secure",
   "RNG, and must not assert byte-equality against this file.",
   "",
-  "falcon-512 is also non-reproducible, for a second reason: its key",
-  "generation is implementation-specific, so the same seed does not give the",
-  "same key in a different library. Falcon signature length varies too",
-  "(649-662 bytes observed); nothing may assume it fixed.",
+  "falcon-512 SIGNING is randomised too, so the same rule applies to it.",
+  "Falcon signature length varies as well (649-662 bytes observed); nothing",
+  "may assume it fixed.",
+  "",
+  "falcon-512 KEY GENERATION, by contrast, is deterministic from a 48-byte",
+  "seed and portable: @noble/post-quantum and BouncyCastle produce identical",
+  "keys from the same seed, verified across the full 896 bytes with two",
+  "different seeds. ml-dsa-65 is the same from a 32-byte seed, agreeing",
+  "between noble and Rust's fips204. An earlier version of this header said",
+  "the opposite about falcon and was simply wrong.",
   "",
   "Falcon key bytes here INCLUDE the 1-byte type header (0x09 public, 0x59",
   "private), so they are 897 and 1281 bytes. BouncyCastle's raw getters strip",
