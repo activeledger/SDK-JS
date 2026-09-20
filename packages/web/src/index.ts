@@ -32,3 +32,6 @@ export { KeyHandler } from "./key.js";
 export { TransactionHandler } from "./transaction.js";
 export { PayloadHandler } from "./payload.js";
 export { LedgerEvents } from "./events.js";
+// Namespaced so `recovery.deriveSeed` reads the same as the other six
+// SDKs, whose equivalent is a module rather than loose functions.
+export * as recovery from "./recovery.js";

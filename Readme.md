@@ -178,6 +178,35 @@ This is how a private key moves between Activeledger SDKs. The PHP SDK's `ml-dsa
 
 For `secp256k1` the seed **is** the private scalar, so it has to be a valid one. A seed of zero, or one at or above the curve order, is refused rather than reduced mod *n* — reducing produces a perfectly functional key belonging to a different identity, and nothing downstream ever reports a problem.
 
+### The derivation on its own
+
+```typescript
+import { recovery } from "@activeledger/sdk-node";   // or sdk-web
+
+const bip39Seed = recovery.toSeed(phrase);                          // 64 bytes
+const seed = recovery.deriveSeed(KeyType.Falcon512, bip39Seed);     // 48 bytes
+const key = await keys.generateKeyFromSeed("mykey", seed, true, KeyType.Falcon512);
+```
+
+Exposed so nobody has to reimplement it. Useful for deriving a seed to hand to
+another SDK — `falcon-512`'s seed derives here even where Falcon itself is
+unavailable — and for inspecting the intermediate when a recovered identity
+isn't the expected one, since `bip39Seed` and `derivedSeed` are both published
+in the vectors.
+
+`toSeed` **validates by default** (wordlist and checksum), matching the other
+six SDKs. `restoreBIP39Key` does not, and that is deliberate: neither `bip39`
+nor `@scure/bip39` validates inside `mnemonicToSeedSync`, so this SDK has
+always accepted an arbitrary string there. Rejecting one now would make an
+existing identity unrecoverable.
+
+> [!NOTE]
+> The two platforms are not equally lenient, and this predates the module.
+> `@scure/bip39` enforces the word count inside `mnemonicToSeedSync`; node's
+> `bip39` enforces nothing. So `restoreBIP39Key("some arbitrary string")`
+> derives a key on `sdk-node` and throws on `sdk-web`. `toSeed`'s default
+> validation is the only way to get the same answer on both.
+
 ### Recovery phrases for post-quantum keys
 
 `restoreBIP39Key` takes a `type`, so one phrase can back a `secp256k1`, an `ml-dsa-65` and a `falcon-512` identity at once:

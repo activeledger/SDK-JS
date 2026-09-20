@@ -27,6 +27,7 @@ import { generateMnemonic, mnemonicToSeedSync } from "bip39";
 import { IKey, KeyHandler as CoreKeyHandler, KeyType } from "@activeledger/sdk-core";
 import { IBIP39Options, IKeyExportOptions, IKeyExtended } from "./interfaces";
 import { NodeCryptoProvider } from "./crypto";
+import { deriveSeed } from "./recovery";
 
 /**
  * Adds file-based key import/export, and BIP-39 recovery-phrase key
@@ -104,7 +105,7 @@ export class KeyHandler extends CoreKeyHandler {
         // reinterpreting leniently the way node:crypto/OpenSSL do.
         const seed = options.legacy
           ? crypto.createHash("sha256").update(phrase, "utf8").digest()
-          : this.deriveSeed(type, mnemonicToSeedSync(phrase, options.passphrase || ""));
+          : deriveSeed(type, mnemonicToSeedSync(phrase, options.passphrase || ""));
 
         const keyHolder: IKeyExtended = {
           key: this.provider.generateFromSeed(seed, options.compressed, type),
@@ -120,56 +121,7 @@ export class KeyHandler extends CoreKeyHandler {
     });
   }
 
-  /**
-   * Turn a BIP-39 seed into the seed the requested algorithm takes.
-   *
-   * The two branches are deliberately different constructions, and the
-   * secp256k1 one must never change: @activeledger/sdk-node and sdk-web have
-   * shipped it since before the post-quantum types existed, so phrases are
-   * already in use. Moving it onto HKDF would hand every one of those users
-   * a different key for a phrase that used to work - not an error, just an
-   * identity that is no longer theirs.
-   *
-   * The post-quantum types are new and carry no such debt, so they get the
-   * construction with proper domain separation. The info string carries a
-   * version so a future scheme is distinguishable rather than silently
-   * incompatible, and an empty salt means a block of zero bytes of the hash
-   * length, exactly as RFC 5869 specifies.
-   *
-   * Published, with vectors, in vectors/seed-vectors.json.
-   *
-   * @private
-   */
-  private deriveSeed(type: KeyType, bip39Seed: Buffer): Buffer {
-    if (type === KeyType.EllipticCurve) {
-      return this.deriveBIP32MasterKey(bip39Seed);
-    }
 
-    const length = type === KeyType.Falcon512 ? 48 : 32;
-
-    return Buffer.from(
-      crypto.hkdfSync(
-        "sha512",
-        bip39Seed,
-        Buffer.alloc(0),
-        Buffer.from(`activeledger-seed-v1:${type}`, "utf8"),
-        length
-      )
-    );
-  }
-
-  /**
-   * BIP-32's master key generation step (the root of the HD tree), applied
-   * to a BIP-39 seed - and nothing past that root, since no child paths are
-   * derived here.
-   *
-   * @private
-   * @param {Buffer} seed
-   * @returns {Buffer} the 32-byte master private key
-   */
-  private deriveBIP32MasterKey(seed: Buffer): Buffer {
-    return crypto.createHmac("sha512", "Bitcoin seed").update(seed).digest().subarray(0, 32);
-  }
 
   /**
    * Export a key to a file

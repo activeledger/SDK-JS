@@ -30,6 +30,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { KeyHandler as CoreKeyHandler, KeyType } from "@activeledger/sdk-core";
 import { IBIP39Options, IKeyExtended } from "./interfaces.js";
 import { fromHex, toHex, WebCryptoProvider } from "./crypto.js";
+import { deriveSeed } from "./recovery.js";
 
 const textEncoder = new TextEncoder();
 
@@ -102,7 +103,7 @@ export class KeyHandler extends CoreKeyHandler {
 
         const seed = options.legacy
           ? sha256(textEncoder.encode(phrase))
-          : this.deriveSeed(type, mnemonicToSeedSync(phrase, options.passphrase || ""));
+          : deriveSeed(type, mnemonicToSeedSync(phrase, options.passphrase || ""));
 
         const keyHolder: IKeyExtended = {
           key: this.provider.generateFromSeed(seed, options.compressed, type),
@@ -118,43 +119,5 @@ export class KeyHandler extends CoreKeyHandler {
     });
   }
 
-  /**
-   * Turn a BIP-39 seed into the seed the requested algorithm takes.
-   *
-   * Byte-for-byte identical to sdk-node's, and the secp256k1 branch must
-   * never change: both packages have shipped it since before the
-   * post-quantum types existed, so phrases are already in use. Moving it
-   * onto HKDF would hand every one of those users a different key for a
-   * phrase that used to work - not an error, just an identity that is no
-   * longer theirs.
-   *
-   * Published, with vectors, in vectors/seed-vectors.json.
-   *
-   * @private
-   */
-  private deriveSeed(type: KeyType, bip39Seed: Uint8Array): Uint8Array {
-    if (type === KeyType.EllipticCurve) {
-      return this.deriveBIP32MasterKey(bip39Seed);
-    }
 
-    const length = type === KeyType.Falcon512 ? 48 : 32;
-
-    // An empty salt is a block of zero bytes of the hash length - what RFC
-    // 5869 specifies, and what node's crypto.hkdfSync does, so the two
-    // packages agree byte for byte.
-    return hkdf(sha512, bip39Seed, new Uint8Array(0), textEncoder.encode(`activeledger-seed-v1:${type}`), length);
-  }
-
-  /**
-   * BIP-32's master key generation step (the root of the HD tree), applied
-   * to a BIP-39 seed - and nothing past that root, since no child paths are
-   * derived here.
-   *
-   * @private
-   * @param {Uint8Array} seed
-   * @returns {Uint8Array} the 32-byte master private key
-   */
-  private deriveBIP32MasterKey(seed: Uint8Array): Uint8Array {
-    return hmac(sha512, textEncoder.encode("Bitcoin seed"), seed).subarray(0, 32);
-  }
 }

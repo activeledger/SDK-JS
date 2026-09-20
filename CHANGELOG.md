@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0]
+
+### Added
+
+- `recovery` — the seed derivation as a public module in both packages, exporting `toSeed`, `deriveSeed`, `deriveBIP32MasterKey`, `validate` and `seedSize`. This was the only SDK of the seven where a caller could not reach the derivation without reimplementing it, which is how a second, drifting copy of a KDF gets written.
+
+  ```ts
+  import { recovery } from "@activeledger/sdk-node";
+  const seed = recovery.deriveSeed(KeyType.Falcon512, recovery.toSeed(phrase));
+  ```
+
+  `falcon-512`'s seed derives even where Falcon itself is unavailable, so a phrase here can produce the seed for an identity used elsewhere.
+
+- `toSeed` validates the phrase by default — wordlist and checksum — matching the other six SDKs.
+
+### Changed
+
+- `restoreBIP39Key` now shares one derivation with the `recovery` module rather than holding a private copy in each platform package. No derived value changes; the published vectors are checked against the live method on every test run.
+
+### Notes
+
+- `restoreBIP39Key` still does **not** validate the phrase, deliberately. Neither `bip39` nor `@scure/bip39` validates inside `mnemonicToSeedSync`, so this SDK has always accepted an arbitrary string; rejecting one now would make an existing identity unrecoverable.
+
+- The two platforms are not equally lenient and this predates the module: `@scure/bip39` enforces the word count, node's `bip39` enforces nothing, so `restoreBIP39Key("some arbitrary string")` derives a key on `sdk-node` and throws on `sdk-web`. `toSeed`'s default validation is the only way to get the same answer on both.
+
 ## [2.2.0]
 
 ### Added
