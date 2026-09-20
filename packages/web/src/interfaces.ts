@@ -53,4 +53,16 @@ export interface IBIP39Options {
    * them revealing the others.
    */
   type?: KeyType;
+  /**
+   * Set false to skip mnemonic validation.
+   *
+   * The phrase is checked by default - wordlist and checksum - because an
+   * unchecked one does not fail loudly: a typo derives a different VALID key
+   * for an identity nobody owns.
+   *
+   * Versions before 2.4.0 never checked, so pass false if you relied on
+   * deriving from a string that is not a BIP-39 mnemonic. Ignored when
+   * `legacy` is true, which never involved a mnemonic.
+   */
+  validate?: boolean;
 }

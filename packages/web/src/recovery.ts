@@ -118,7 +118,8 @@ export function validate(phrase: string): string {
     throw new Error(
       "the BIP-39 checksum does not match - the phrase has a typo or the words are in the " +
         "wrong order. Deriving from it anyway would produce a valid key for an identity " +
-        "nobody owns.",
+        "nobody owns. If you meant to derive from a non-mnemonic string, pass " +
+        "{ validate: false }.",
     );
   }
 

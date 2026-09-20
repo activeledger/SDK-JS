@@ -77,18 +77,40 @@ describe("recovery (sdk-node)", () => {
     expect(lenient).toHaveLength(64);
   });
 
-  it("restoreBIP39Key stays lenient, and that is deliberate", async () => {
-    await expect(handler.restoreBIP39Key("k", "not a real mnemonic at all")).resolves.toBeDefined();
+  it("restoreBIP39Key now validates, and says how to opt out", async () => {
+    // Was lenient before 2.4.0. A typo derived a different VALID key for an
+    // identity nobody owns, and only the ledger ever noticed.
+    await expect(
+      handler.restoreBIP39Key("k", "abandon ".repeat(11) + "abandon")
+    ).rejects.toThrow(/checksum.*\{ validate: false \}/s);
+
+    await expect(handler.restoreBIP39Key("k", "not a real mnemonic at all")).rejects.toThrow(
+      /12, 15, 18, 21 or 24/
+    );
   });
 
-  it("that leniency is NOT shared with sdk-web", async () => {
-    // Pinned because it surprises: @scure/bip39 enforces the word count inside
-    // mnemonicToSeedSync and node's bip39 enforces nothing, so this same call
-    // throws on sdk-web. Pre-existing, and neither side is safe to change -
-    // tightening node would reject phrases that currently work and orphan
-    // whatever they unlock.
-    //
-    // toSeed validating by default is what makes the two agree.
+  it("the opt-out restores the pre-2.4.0 behaviour", async () => {
+    // Kept because someone may have used an arbitrary string deliberately.
+    // Refusing it now would make that identity unrecoverable, which is the
+    // same failure validation exists to prevent, pointed the other way.
+    await expect(
+      handler.restoreBIP39Key("k", "not a real mnemonic at all", { validate: false })
+    ).resolves.toBeDefined();
+  });
+
+  it("the legacy scheme is never validated", async () => {
+    // SHA256 of the string, never a BIP-39 mnemonic operation. The original
+    // sdk-bip39 package never consulted the wordlist, so refusing a phrase it
+    // accepted would orphan a recoverable identity.
+    await expect(
+      handler.restoreBIP39Key("k", "not a real mnemonic at all", { legacy: true })
+    ).resolves.toBeDefined();
+  });
+
+  it("validation makes both platforms agree, which they did not before", async () => {
+    // @scure/bip39 enforces the word count inside mnemonicToSeedSync; node's
+    // bip39 enforces nothing. With validation on by default the difference is
+    // no longer reachable through restoreBIP39Key.
     expect(() => recovery.toSeed("not a real mnemonic at all")).toThrow(/12, 15, 18, 21 or 24/);
   });
 

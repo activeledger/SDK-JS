@@ -30,7 +30,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { KeyHandler as CoreKeyHandler, KeyType } from "@activeledger/sdk-core";
 import { IBIP39Options, IKeyExtended } from "./interfaces.js";
 import { fromHex, toHex, WebCryptoProvider } from "./crypto.js";
-import { deriveSeed } from "./recovery.js";
+import { deriveSeed, validate } from "./recovery.js";
 
 const textEncoder = new TextEncoder();
 
@@ -99,6 +99,21 @@ export class KeyHandler extends CoreKeyHandler {
           return reject(
             new Error(`The legacy BIP-39 scheme is secp256k1 only - it cannot derive ${type}`)
           );
+        }
+
+        // Validated unless explicitly waived. An unchecked phrase does not
+        // fail loudly: a typo lands on a different VALID key for an identity
+        // nobody owns, and the only symptom is the ledger not recognising it
+        // - a long way from the cause. Every other Activeledger SDK checks
+        // here, and this package was the last that did not.
+        //
+        // Not applied to the legacy scheme, which is SHA256 of the string and
+        // never a BIP-39 mnemonic operation. The original
+        // @activeledger/sdk-bip39 package never consulted the wordlist, so
+        // refusing a phrase it accepted would make a recoverable identity
+        // unrecoverable.
+        if (!options.legacy && options.validate !== false) {
+          validate(phrase);
         }
 
         const seed = options.legacy

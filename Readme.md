@@ -194,18 +194,17 @@ unavailable — and for inspecting the intermediate when a recovered identity
 isn't the expected one, since `bip39Seed` and `derivedSeed` are both published
 in the vectors.
 
-`toSeed` **validates by default** (wordlist and checksum), matching the other
-six SDKs. `restoreBIP39Key` does not, and that is deliberate: neither `bip39`
-nor `@scure/bip39` validates inside `mnemonicToSeedSync`, so this SDK has
-always accepted an arbitrary string there. Rejecting one now would make an
-existing identity unrecoverable.
+`toSeed` and `restoreBIP39Key` both **validate by default** (wordlist and
+checksum), matching the other six SDKs. Neither `bip39` nor `@scure/bip39`
+validates inside `mnemonicToSeedSync`, so until 2.4.0 this package accepted
+anything — and an unchecked phrase does not fail loudly: a typo derives a
+different **valid** key for an identity nobody owns.
 
-> [!NOTE]
-> The two platforms are not equally lenient, and this predates the module.
-> `@scure/bip39` enforces the word count inside `mnemonicToSeedSync`; node's
-> `bip39` enforces nothing. So `restoreBIP39Key("some arbitrary string")`
-> derives a key on `sdk-node` and throws on `sdk-web`. `toSeed`'s default
-> validation is the only way to get the same answer on both.
+> [!IMPORTANT]
+> **Changed in 2.4.0.** If you relied on deriving from a string that is not a
+> BIP-39 mnemonic, pass `{ validate: false }`. The thrown message names the
+> flag. `{ legacy: true }` is never validated — it is `SHA256(phrase)` and was
+> never a mnemonic operation.
 
 ### Recovery phrases for post-quantum keys
 

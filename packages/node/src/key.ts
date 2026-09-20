@@ -27,7 +27,7 @@ import { generateMnemonic, mnemonicToSeedSync } from "bip39";
 import { IKey, KeyHandler as CoreKeyHandler, KeyType } from "@activeledger/sdk-core";
 import { IBIP39Options, IKeyExportOptions, IKeyExtended } from "./interfaces";
 import { NodeCryptoProvider } from "./crypto";
-import { deriveSeed } from "./recovery";
+import { deriveSeed, validate } from "./recovery";
 
 /**
  * Adds file-based key import/export, and BIP-39 recovery-phrase key
@@ -103,6 +103,21 @@ export class KeyHandler extends CoreKeyHandler {
         // only avoids handing back a non-standard-length string that
         // @noble/curves (used by sdk-web) hard-rejects outright rather than
         // reinterpreting leniently the way node:crypto/OpenSSL do.
+        // Validated unless explicitly waived. An unchecked phrase does not
+        // fail loudly: a typo lands on a different VALID key for an identity
+        // nobody owns, and the only symptom is the ledger not recognising it
+        // - a long way from the cause. Every other Activeledger SDK checks
+        // here, and this package was the last that did not.
+        //
+        // Not applied to the legacy scheme, which is SHA256 of the string and
+        // never a BIP-39 mnemonic operation. The original
+        // @activeledger/sdk-bip39 package never consulted the wordlist, so
+        // refusing a phrase it accepted would make a recoverable identity
+        // unrecoverable.
+        if (!options.legacy && options.validate !== false) {
+          validate(phrase);
+        }
+
         const seed = options.legacy
           ? crypto.createHash("sha256").update(phrase, "utf8").digest()
           : deriveSeed(type, mnemonicToSeedSync(phrase, options.passphrase || ""));

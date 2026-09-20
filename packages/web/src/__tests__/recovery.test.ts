@@ -59,6 +59,15 @@ describe("recovery (sdk-web)", () => {
     expect(recovery.toSeed("zzzz ".repeat(11) + "zzzz", "", { validate: false })).toHaveLength(64);
   });
 
+  it("restoreBIP39Key validates here too, identically to sdk-node", async () => {
+    await expect(
+      handler.restoreBIP39Key("k", "abandon ".repeat(11) + "abandon")
+    ).rejects.toThrow(/checksum/);
+    await expect(
+      handler.restoreBIP39Key("k", "zzzz ".repeat(11) + "zzzz", { validate: false })
+    ).resolves.toBeDefined();
+  });
+
   it("skipping validation is NOT the same leniency as sdk-node", () => {
     // A pre-existing platform difference, pinned rather than papered over.
     // @scure/bip39 enforces the word count inside mnemonicToSeedSync; node's

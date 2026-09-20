@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0]
+
+### Changed
+
+- **`restoreBIP39Key` now validates the recovery phrase** — wordlist and checksum — and throws if it does not pass. It never did before, and it was the only Activeledger SDK of seven that did not; the other six route their phrase entry point through a validating `toSeed`.
+
+  This is a correctness fix, and it fails in the direction that matters. An unchecked phrase does not fail loudly: a typo derives a different **valid** key for an identity nobody owns, and the only symptom is the ledger not recognising it, a long way from the cause.
+
+- **If you relied on deriving from a string that is not a BIP-39 mnemonic, pass `{ validate: false }`.** The behaviour is unchanged under that flag, and the thrown message names it. The opt-out exists because refusing a phrase that used to work would make that identity unrecoverable — the same failure validation prevents, pointed the other way.
+
+- `{ legacy: true }` is never validated. It is `SHA256(phrase)` and was never a BIP-39 mnemonic operation, and the original `@activeledger/sdk-bip39` package never consulted the wordlist.
+
+### Fixed
+
+- The two packages were not equally lenient, which this resolves for the default path. `@scure/bip39` enforces the word count inside `mnemonicToSeedSync` while node's `bip39` enforces nothing, so `restoreBIP39Key("some arbitrary string")` used to derive a key on `sdk-node` and throw on `sdk-web`. Both now validate, so both agree; the difference is only reachable via `{ validate: false }`.
+
 ## [2.3.0]
 
 ### Added
