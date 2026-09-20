@@ -1,6 +1,6 @@
 {
   "name": "@activeledger/sdk-core",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Platform-agnostic core (transaction building, connection, interfaces) shared by @activeledger/sdk-node and @activeledger/sdk-web",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
