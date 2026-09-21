@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0]
+
+### Added
+
+- `vectors/number-vectors.json` and `scripts/number-vectors.mjs` — the canonical number formatting published as cross-language vectors, and the generator that produces them from `JSON.stringify`.
+
+  This SDK needed no code change: it *is* the reference, because the ledger verifies against a re-stringified `$tx` (`packages/crypto/src/crypto/keypair.ts` calls `JSON.stringify` on the object its HTTP layer parsed). The other six all diverged outside the range the existing `float` vector covers — two of them badly enough to turn a positive number negative.
+
+  | input | JS | PHP | Python | Go | Rust |
+  | --- | --- | --- | --- | --- | --- |
+  | `1e21` | `1e+21` | `1.0e+21` | `1000…000` | `1e+21` | `1000…000` |
+  | `1e-7` | `1e-7` | `1.0e-7` | `1e-07` | `1e-07` | `0.0000001` |
+  | `-0` | `0` | `0` | `0` | `-0` | `0` |
+
+  24 cases covering both sides of both ECMA-262 boundaries, verified against `JSON.stringify` on 6139 doubles including every power of ten from 1e-330 to 1e308.
+
+- `scripts/verify-number-vectors.mjs`, in `npm test`. Trivial by construction, and that is the point — it catches a vector file that was hand-edited, truncated or merged badly, which six other repositories would then trust.
+
 ## [2.4.0]
 
 ### Changed
