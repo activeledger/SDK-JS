@@ -1,3 +1,4 @@
+import * as crypto from "crypto";
 import { NodeCryptoProvider } from "../crypto";
 
 /**
@@ -82,5 +83,41 @@ describe("sdk-node secp256k1 signatures are canonical", () => {
     expect(provider.verify("payload", highS, key.pub, "secp256k1")).toBe(true);
     // Permissive about s only.
     expect(provider.verify("tampered", highS, key.pub, "secp256k1")).toBe(false);
+  });
+  /**
+   * Low-S folding is a secp256k1 canonicalisation: it reads the signature as
+   * a DER (r, s) pair. An RSA signature is a single integer, so folding one
+   * threw "Malformed ECDSA signature: expected R" and broke RSA signing
+   * outright - which is what a Varnir contract-deploy identity uses, so every
+   * deploy failed. `generate()` cannot make an RSA key (it ignores any
+   * non-post-quantum type and returns secp256k1), so the key here is a real
+   * one from node:crypto, which is also the shape a legacy RSA identity has.
+   */
+  it("signs and verifies with an RSA key, which is not an (r, s) pair", () => {
+    const provider = new NodeCryptoProvider();
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+
+    const signature = provider.sign("payload", { pkcs8pem: privateKey }, "rsa");
+
+    expect(Buffer.from(signature, "base64").length).toBe(256);
+    expect(provider.verify("payload", signature, { pkcs8pem: publicKey }, "rsa")).toBe(true);
+    expect(provider.verify("tampered", signature, { pkcs8pem: publicKey }, "rsa")).toBe(false);
+  });
+
+  it("signs with an RSA key when no type is passed", () => {
+    const provider = new NodeCryptoProvider();
+    const { privateKey, publicKey } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+
+    const signature = provider.sign("payload", { pkcs8pem: privateKey });
+
+    expect(provider.verify("payload", signature, { pkcs8pem: publicKey })).toBe(true);
   });
 });

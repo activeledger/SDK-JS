@@ -188,9 +188,19 @@ export class NodeCryptoProvider implements ICryptoProvider {
 
     const sign = crypto.createSign("sha256");
     sign.update(data);
-    const der = sign.sign(this.toPrivatePem(prv.pkcs8pem));
+    const pem = this.toPrivatePem(prv.pkcs8pem);
+    const signature = sign.sign(pem);
 
-    return Buffer.from(NodeCryptoProvider.toLowS(der)).toString("base64");
+    // Low-S folding reads the signature as a DER (r, s) pair - an ECDSA
+    // shape. An RSA signature is a single integer, so folding one threw
+    // "Malformed ECDSA signature: expected R" and broke RSA signing
+    // outright. That is not a hypothetical key type: the contract-deploy
+    // identity on a Varnir network is RSA, and this stopped every deploy.
+    if (crypto.createPrivateKey(pem).asymmetricKeyType !== "ec") {
+      return signature.toString("base64");
+    }
+
+    return Buffer.from(NodeCryptoProvider.toLowS(signature)).toString("base64");
   }
 
   /**
