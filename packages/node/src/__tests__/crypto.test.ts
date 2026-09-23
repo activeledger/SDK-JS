@@ -10,6 +10,20 @@ describe("NodeCryptoProvider", () => {
     expect(key.pub.pkcs8pem).toMatch(/^0x04[0-9a-f]{128}$/);
   });
 
+  it("refuses a key type it cannot generate rather than silently returning secp256k1", () => {
+    const provider = new NodeCryptoProvider();
+    // Before this, generate(true, "rsa") handed back a secp256k1 pair with no
+    // warning - so a caller asking for RSA signed with EC and never knew.
+    expect(() => provider.generate(true, "rsa")).toThrow(/rsa/);
+    expect(() => provider.generate(true, "not-a-type")).toThrow(/not-a-type/);
+  });
+
+  it("still generates secp256k1 when the type is omitted or named", () => {
+    const provider = new NodeCryptoProvider();
+    expect(provider.generate(true).prv.pkcs8pem).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(provider.generate(true, "secp256k1").prv.pkcs8pem).toMatch(/^0x[0-9a-f]{64}$/);
+  });
+
   it("generates a compressed public key when requested", () => {
     const provider = new NodeCryptoProvider();
     const key = provider.generate(true);
