@@ -88,7 +88,7 @@ describe("sdk-node secp256k1 signatures are canonical", () => {
    * Low-S folding is a secp256k1 canonicalisation: it reads the signature as
    * a DER (r, s) pair. An RSA signature is a single integer, so folding one
    * threw "Malformed ECDSA signature: expected R" and broke RSA signing
-   * outright - which is what a Varnir contract-deploy identity uses, so every
+   * outright - which is what some contract-deploy identities use, so every
    * deploy failed. `generate()` cannot make an RSA key (it ignores any
    * non-post-quantum type and returns secp256k1), so the key here is a real
    * one from node:crypto, which is also the shape a legacy RSA identity has.

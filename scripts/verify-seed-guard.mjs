@@ -15,7 +15,7 @@
 // EVERY MUTATION ASSERTS THAT IT MUTATED. A replacement whose pattern no
 // longer matches is a silent no-op, and a mutation that does not mutate reads
 // exactly like a passing guard - the verifier is handed unchanged code and
-// correctly says nothing is wrong. Both this repository and the Varnir team
+// correctly says nothing is wrong. Both this repository and a downstream team
 // hit that false pass independently, in opposite directions, within a day.
 
 import { execFileSync } from "child_process";

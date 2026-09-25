@@ -176,7 +176,7 @@ export function deriveSeed(type: KeyType, bip39Seed: Uint8Array): Buffer {
  *
  * Exported because it is the whole of the `secp256k1` derivation, and a
  * caller comparing against another implementation needs to see this step
- * rather than infer it. Varnir's client, for one, derives a BIP-32 CHILD at
+ * rather than infer it. Another client in the wild derives a BIP-32 CHILD at
  * `m/44'/1'/0'/0/0` instead, which is a different identity from the same
  * phrase.
  */

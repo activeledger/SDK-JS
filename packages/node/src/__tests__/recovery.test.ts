@@ -135,7 +135,7 @@ describe("recovery (sdk-node)", () => {
   });
 
   it("exposes the secp256k1 master-key step, which differs from a BIP-32 child", () => {
-    // Varnir's client derives a child at m/44'/1'/0'/0/0 from the same phrase
+    // Another client derives a child at m/44'/1'/0'/0/0 from the same phrase
     // and gets a different identity. Exposed so that is checkable rather than
     // inferred.
     const bip39 = recovery.toSeed(phraseVectors[0].phrase);

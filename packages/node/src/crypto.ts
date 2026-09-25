@@ -215,7 +215,7 @@ export class NodeCryptoProvider implements ICryptoProvider {
     // shape. An RSA signature is a single integer, so folding one threw
     // "Malformed ECDSA signature: expected R" and broke RSA signing
     // outright. That is not a hypothetical key type: the contract-deploy
-    // identity on a Varnir network is RSA, and this stopped every deploy.
+    // identity on some networks is RSA, and this stopped every deploy.
     if (crypto.createPrivateKey(pem).asymmetricKeyType !== "ec") {
       return signature.toString("base64");
     }
