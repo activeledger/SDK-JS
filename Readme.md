@@ -3,6 +3,10 @@
   <img src="https://raw.githubusercontent.com/activeledger/activeledger/master/docs/assets/Asset-23.png" alt="Activeledger" width="300"/>
 </picture>
 
+[![npm](https://img.shields.io/npm/v/%40activeledger%2Fsdk-node?label=sdk-node)](https://www.npmjs.com/package/@activeledger/sdk-node)
+[![npm](https://img.shields.io/npm/v/%40activeledger%2Fsdk-web?label=sdk-web)](https://www.npmjs.com/package/@activeledger/sdk-web)
+[![licence](https://img.shields.io/badge/licence-MIT-blue)](https://github.com/activeledger/SDK-JS/blob/master/LICENSE)
+
 # Activeledger - SDK
 
 Two packages for connecting a JavaScript/TypeScript application to an Activeledger network:
