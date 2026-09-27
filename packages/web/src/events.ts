@@ -30,6 +30,15 @@ import { LedgerEvents as CoreLedgerEvents } from "@activeledger/sdk-core";
  * same way it needs one for WebCrypto - this package deliberately doesn't
  * bundle a polyfill itself so plain web usage stays dependency-free.
  *
+ *
+ * @deprecated ActiveCore is deprecated and should not be used, and events
+ * are no longer served by it. A node now serves contract events from its
+ * own storage service, which must never be reachable beyond the node's
+ * host - so a client SDK has nothing it should connect to. Run your own
+ * server-sent events listener on the node's host
+ * (`http://localhost:<storage port>/activeledgerevents/events`) and relay
+ * what your application needs. This class will be removed in a future
+ * major version.
  * @export
  * @class LedgerEvents
  */

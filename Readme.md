@@ -17,7 +17,7 @@ Two packages for connecting a JavaScript/TypeScript application to an Activeledg
 | [`@activeledger/sdk-web`](./packages/web)                    | Browsers and React Native                  | [`@noble/curves`](https://github.com/paulmillr/noble-curves) (audited, pure JS, no native dependency) |
 | [`@activeledger/sdk-core`](./packages/core)                   | Shared internals - not installed directly  | -                                                                            |
 
-Both packages share the same API shape (`KeyHandler`, `TransactionHandler`, `Connection`, `LedgerEvents`) and produce signatures that verify identically against the ledger and against each other - a key made with one package works with the other.
+Both packages share the same API shape (`KeyHandler`, `TransactionHandler`, `Connection`) and produce signatures that verify identically against the ledger and against each other - a key made with one package works with the other.
 
 ## Post-quantum keys
 
@@ -117,7 +117,7 @@ This replaces the single `@activeledger/sdk` package (Node-only, depended on `@a
 - **RSA support was dropped.** The ledger accepts secp256k1 identities everywhere RSA was previously used, so both packages only implement one curve. `KeyType.RSA` no longer exists; `generateKey(name, compressed?)` no longer takes a `KeyType` argument.
 - **The optional transport-encryption feature is gone** (`Connection`'s `encrypt` flag, and `IKey`'s RSA-based request-body encryption). It was RSA-only and opt-in/off by default; it can come back later via WebCrypto's native RSA-OAEP if ever needed.
 - **File-based key export/import (`exportKey`/`importKey`) is Node-only**, on `@activeledger/sdk-node`'s `KeyHandler`. `@activeledger/sdk-web`'s `KeyHandler` only generates/onboards - persisting a key is left to the app (localStorage, AsyncStorage, SecureStore, etc. all differ per environment).
-- **`LedgerEvents` (SSE subscriptions) needs a polyfilled `EventSource` global in React Native.** Every browser has one natively; Node's build uses the `eventsource` npm package; React Native needs an app-level polyfill (e.g. `react-native-sse`) for `@activeledger/sdk-web` to work there.
+- **`LedgerEvents` is deprecated**, along with ActiveCore, whose events API it wraps. A node serves contract events from its own storage service, which must never be reachable beyond the node's host, so a client has nothing it should connect to. Run your own server-sent events listener on the node's host (`http://localhost:<storage port>/activeledgerevents/events`) and relay what your application needs.
 
 ### GitHub
 
@@ -272,7 +272,7 @@ The full derivation, both layers, and the cross-language vectors are published i
 | `KeyHandler`           | Key generation and onboarding                               |
 | `PayloadHandler`       | Signing and verifying arbitrary payloads (not transactions) |
 | `TransactionHandler`   | Transaction building and signing                             |
-| `LedgerEvents`         | SSE subscriptions to ActiveCore's events API                 |
+| `LedgerEvents`         | **Deprecated.** SSE subscriptions to ActiveCore's events API |
 
 ## Development
 

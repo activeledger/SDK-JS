@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Deprecated
+
+- **`LedgerEvents`, and ActiveCore with it.** ActiveCore is deprecated and should not be used, and it no longer serves events: a node serves contract events from its own storage service at `http://localhost:<storage port>/activeledgerevents/events`. That service must never be reachable beyond the node's host, so a client SDK - particularly one in a browser or on a phone - has nothing it should connect to. Run your own server-sent events listener on the node's host and relay what your application needs. `LedgerEvents` still works against an ActiveCore server and will be removed in the next major version.
+
 ### Fixed
 
 - **Onboarding a key that already has an identity** signed under the identity instead of the `$i` label, and the ledger rejected it with "Self signed signature not found". `buildOnboardKeyTx` now always keys `$sigs` by the key name, as the ledger's self-signed path requires.
