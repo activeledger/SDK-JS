@@ -174,3 +174,87 @@ describe("Connection", () => {
     ).not.toThrow();
   });
 });
+
+describe("buildOnboardKeyTx regressions", () => {
+  it("keys $sigs by the $i label even when the key already has an identity", async () => {
+    const provider = new StubCryptoProvider();
+    const key: IKey = {
+      name: "mykey",
+      type: KeyType.EllipticCurve,
+      key: provider.generate(),
+      identity: "existing-stream-id",
+    };
+    const tx = await new TransactionHandler(provider).buildOnboardKeyTx(key);
+
+    expect(Object.keys(tx.$sigs)).toEqual(["mykey"]);
+  });
+
+  it("does not carry custom options over to later onboards", async () => {
+    const provider = new StubCryptoProvider();
+    const key: IKey = { name: "mykey", type: KeyType.EllipticCurve, key: provider.generate() };
+    const handler = new TransactionHandler(provider);
+
+    await handler.buildOnboardKeyTx(key, { contract: "customOnboard", namespace: "myapp" });
+    const later = await handler.buildOnboardKeyTx(key);
+
+    expect(later.$tx.$contract).toBe("onboard");
+    expect(later.$tx.$namespace).toBe("default");
+  });
+});
+
+describe("KeyHandler.onboardKey", () => {
+  const respondWith = (response: unknown) =>
+    ({ sendTransaction: () => Promise.resolve(response) }) as unknown as Connection;
+
+  it("sets the identity from the new stream", async () => {
+    const provider = new StubCryptoProvider();
+    const key = await new KeyHandler(provider).generateKey("mykey");
+    await new KeyHandler(provider).onboardKey(
+      key,
+      respondWith({ $streams: { new: [{ id: "new-id", name: "x" }], updated: [] } })
+    );
+
+    expect(key.identity).toBe("new-id");
+  });
+
+  it("rejects with the ledger's errors when no identity was created", async () => {
+    const provider = new StubCryptoProvider();
+    const key = await new KeyHandler(provider).generateKey("mykey");
+
+    await expect(
+      new KeyHandler(provider).onboardKey(
+        key,
+        respondWith({
+          $umid: "u",
+          $summary: { total: 4, vote: 0, commit: 0, errors: ["1220 Signature Incorrect"] },
+          $streams: { new: [], updated: [] },
+        })
+      )
+    ).rejects.toThrow('Onboarding "mykey" created no identity: 1220 Signature Incorrect');
+    expect(key.identity).toBeUndefined();
+  });
+});
+
+describe("LedgerEvents URL handling", () => {
+  // Imported here rather than at the top so the stub above stays the first
+  // thing a reader sees.
+  const { LedgerEvents } = require("../events");
+  const noopSource = () => ({ onerror: null, addEventListener: () => undefined, close: () => undefined });
+
+  it.each([
+    ["http://host:5261", "http://host:5261/api"],
+    ["http://host:5261/", "http://host:5261/api"],
+    ["http://host:5261//", "http://host:5261/api"],
+    ["http://host:5261/api", "http://host:5261/api"],
+    ["http://host:5261/api/", "http://host:5261/api"],
+  ])("%s resolves to %s", (given, expected) => {
+    const opened: string[] = [];
+    const events = new LedgerEvents(given, (url: string) => {
+      opened.push(url);
+      return noopSource();
+    });
+    events.subscribeToActivity(() => undefined);
+
+    expect(opened).toEqual([`${expected}/activity/subscribe`]);
+  });
+});

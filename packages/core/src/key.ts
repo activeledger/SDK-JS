@@ -129,7 +129,22 @@ export class KeyHandler {
       try {
         const txBody = await txHandler.buildOnboardKeyTx(key);
         const response = await txHandler.sendTransaction(txBody, connection);
-        key.identity = response.$streams.new[0].id;
+
+        // A rejected onboard is still HTTP 200, with no new stream. This used
+        // to fail with "Cannot read properties of undefined (reading 'id')",
+        // which hid the ledger's own reason.
+        const created = response && response.$streams && response.$streams.new;
+        if (!created || !created.length || !created[0].id) {
+          const errors = (response && (response.$summary as any)?.errors) || [];
+          return reject(
+            new Error(
+              `Onboarding "${key.name}" created no identity` +
+                (errors.length ? `: ${errors.join("; ")}` : ` - ledger response: ${JSON.stringify(response)}`)
+            )
+          );
+        }
+
+        key.identity = created[0].id;
         resolve(response);
       } catch (error) {
         reject(error);

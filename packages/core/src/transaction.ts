@@ -69,25 +69,20 @@ export class TransactionHandler {
    * @memberof Transaction
    */
   public buildOnboardKeyTx(key: IKey, options?: IOnboardKeyTxOptions): Promise<IOnboardTx> {
-    // If options not provided use the default values
-    if (options) {
-      if (options.contract) {
-        this.contract = options.contract;
-      }
-
-      if (options.namespace) {
-        this.namespace = options.namespace;
-      }
-    }
+    // Options apply to this call only. They used to be written onto the
+    // handler, so one custom-contract onboard silently changed every later
+    // onboard made with the same TransactionHandler.
+    const contract = options?.contract || this.contract;
+    const namespace = options?.namespace || this.namespace;
 
     // Build the transaction
     const tx: IOnboardTx = {
       $selfsign: true,
       $sigs: {},
       $tx: {
-        $contract: this.contract,
+        $contract: contract,
         $i: {},
-        $namespace: this.namespace,
+        $namespace: namespace,
       },
     };
 
@@ -97,8 +92,11 @@ export class TransactionHandler {
       type: key.type,
     };
 
-    // Return the signTransaction promise
-    return this.signTransaction<IOnboardTx>(tx, key);
+    // Keyed by the $i label explicitly. The ledger looks self-signed
+    // signatures up by label, but signTransaction() prefers key.identity, so
+    // onboarding a key that already had an identity signed under the wrong
+    // name and was rejected with "Self signed signature not found".
+    return this.signTransaction<IOnboardTx>(tx, key, key.name);
   }
 
   /**

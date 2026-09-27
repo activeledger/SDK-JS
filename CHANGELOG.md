@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Onboarding a key that already has an identity** signed under the identity instead of the `$i` label, and the ledger rejected it with "Self signed signature not found". `buildOnboardKeyTx` now always keys `$sigs` by the key name, as the ledger's self-signed path requires.
+- **`buildOnboardKeyTx` options leaked into later calls.** A custom `contract` or `namespace` was written onto the `TransactionHandler`, so every later onboard through the same handler used it too. Options now apply to the one call.
+- **A rejected onboard now rejects with the ledger's reason.** `onboardKey` read `$streams.new[0].id` unguarded and failed with "Cannot read properties of undefined (reading 'id')" when no identity was created, hiding the ledger's errors. It now rejects with them, and leaves `key.identity` unset.
+- **`LedgerEvents` cut one character too many off a trailing slash**, so `http://host:5261/` subscribed to `http://host:526/api`. Trailing slashes are now stripped exactly.
+
 ## [2.5.0]
 
 ### Added

@@ -68,10 +68,10 @@ export class LedgerEvents {
       throw new Error("Activecore URL must include http:// or https://");
     }
 
-    // We add the / so remove if found
-    if (this.url.endsWith("/")) {
-      this.url = this.url.substring(0, this.url.lastIndexOf("/") - 1);
-    }
+    // We add the / so remove any found. This used to cut one character
+    // too many ("http://host:5261/" became "http://host:526"), so a URL
+    // given with a trailing slash subscribed to the wrong port.
+    this.url = this.url.replace(/\/+$/, "");
 
     // Is api part of the path
     if (!this.url.endsWith("api")) {
