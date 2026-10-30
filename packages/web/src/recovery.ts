@@ -24,7 +24,8 @@
 import { hmac } from "@noble/hashes/hmac.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha512 } from "@noble/hashes/sha2.js";
-import { mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
+import { pbkdf2 } from "@noble/hashes/pbkdf2.js";
+import { validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { KeyType } from "@activeledger/sdk-core";
 
@@ -88,12 +89,8 @@ export function seedSize(type: KeyType): number {
  * does not fail: it derives a perfectly valid key for an identity nobody
  * owns, and the only symptom is the ledger not recognising it.
  *
- * NOTE that `KeyHandler.restoreBIP39Key` deliberately does NOT call this.
- * Neither `bip39` nor `@scure/bip39` validates inside `mnemonicToSeedSync`,
- * so this SDK has always accepted an arbitrary string there and derived a key
- * from it. Someone may be relying on that, and rejecting their phrase now
- * would make an existing identity unrecoverable - the same failure this
- * function exists to prevent. Call it explicitly, or use `toSeed`.
+ * `KeyHandler.restoreBIP39Key` calls this unless given `{ validate: false }`,
+ * which derives from an arbitrary string exactly as sdk-node does.
  *
  * @throws if the phrase is not a valid mnemonic
  */
@@ -127,6 +124,23 @@ export function validate(phrase: string): string {
 }
 
 /**
+ * The BIP-39 seed of any string, with no mnemonic checks.
+ *
+ * `@scure/bip39`'s own `mnemonicToSeedSync` rejects a phrase that is not a
+ * valid mnemonic, so the unchecked path - which `bip39` on Node has always
+ * had - is done here: PBKDF2-HMAC-SHA512 over the NFKD phrase, salted with
+ * "mnemonic" + the NFKD passphrase, 2048 rounds, 64 bytes.
+ */
+export function unvalidatedSeed(phrase: string, passphrase = ""): Uint8Array {
+  return pbkdf2(
+    sha512,
+    textEncoder.encode(phrase.normalize("NFKD")),
+    textEncoder.encode("mnemonic" + passphrase.normalize("NFKD")),
+    { c: 2048, dkLen: BIP39_SEED_BYTES },
+  );
+}
+
+/**
  * Turns a recovery phrase into its 64-byte BIP-39 seed.
  *
  * Validates by default, matching every other Activeledger SDK. Pass
@@ -139,7 +153,7 @@ export function toSeed(
   options: { validate?: boolean } = {},
 ): Uint8Array {
   const checked = options.validate === false ? phrase : validate(phrase);
-  return mnemonicToSeedSync(checked, passphrase);
+  return unvalidatedSeed(checked, passphrase);
 }
 
 /**

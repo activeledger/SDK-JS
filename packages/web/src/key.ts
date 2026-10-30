@@ -21,7 +21,7 @@
  * SOFTWARE.
  */
 
-import { generateMnemonic, mnemonicToSeedSync } from "@scure/bip39";
+import { generateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
@@ -30,7 +30,7 @@ import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { KeyHandler as CoreKeyHandler, KeyType } from "@activeledger/sdk-core";
 import { IBIP39Options, IKeyExtended } from "./interfaces.js";
 import { fromHex, toHex, WebCryptoProvider } from "./crypto.js";
-import { deriveSeed, validate } from "./recovery.js";
+import { deriveSeed, unvalidatedSeed, validate } from "./recovery.js";
 
 const textEncoder = new TextEncoder();
 
@@ -118,7 +118,7 @@ export class KeyHandler extends CoreKeyHandler {
 
         const seed = options.legacy
           ? sha256(textEncoder.encode(phrase))
-          : deriveSeed(type, mnemonicToSeedSync(phrase, options.passphrase || ""));
+          : deriveSeed(type, unvalidatedSeed(phrase, options.passphrase || ""));
 
         const keyHolder: IKeyExtended = {
           key: this.provider.generateFromSeed(seed, options.compressed, type),

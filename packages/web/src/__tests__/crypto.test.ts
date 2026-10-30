@@ -93,3 +93,30 @@ describe("WebCryptoProvider", () => {
     }
   });
 });
+
+describe("WebCryptoProvider.verify - public key validation", () => {
+  const offCurve = (pub: string): string => {
+    const bytes = Buffer.from(pub.replace(/^0x/, ""), "hex");
+    bytes[bytes.length - 1] ^= 0x01;
+    return "0x" + bytes.toString("hex");
+  };
+
+  it("rejects an uncompressed public key that is not on the curve", () => {
+    const provider = new WebCryptoProvider();
+    const key = provider.generate(false);
+    const signature = provider.sign("data", key.prv);
+
+    expect(key.pub.pkcs8pem).toMatch(/^0x04/);
+    expect(provider.verify("data", signature, key.pub)).toBe(true);
+    expect(provider.verify("data", signature, { pkcs8pem: offCurve(key.pub.pkcs8pem) })).toBe(false);
+  });
+
+  it("rejects the point at infinity and an all-zero point", () => {
+    const provider = new WebCryptoProvider();
+    const key = provider.generate(false);
+    const signature = provider.sign("data", key.prv);
+
+    expect(provider.verify("data", signature, { pkcs8pem: "0x04" + "00".repeat(64) })).toBe(false);
+    expect(provider.verify("data", signature, { pkcs8pem: "0x00" })).toBe(false);
+  });
+});
