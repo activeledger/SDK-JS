@@ -79,3 +79,33 @@ describe("NodeCryptoProvider", () => {
     }
   });
 });
+
+describe("NodeCryptoProvider malformed input", () => {
+  // decodeDer is private and only ever fed node:crypto's own output by sign(),
+  // so the malformed-structure guards are reachable only by calling it directly.
+  const decodeDer = (der: Buffer) => (NodeCryptoProvider as any).decodeDer(der);
+
+  it("decodeDer reads R and S from a well-formed DER signature", () => {
+    const { r, s } = decodeDer(Buffer.from("3006020101020102", "hex"));
+
+    expect(r.toString("hex")).toBe("01");
+    expect(s).toBe(BigInt(2));
+  });
+
+  it("decodeDer refuses a signature whose first element is not an INTEGER", () => {
+    expect(() => decodeDer(Buffer.from("3006040101020102", "hex"))).toThrow("Malformed ECDSA signature: expected R");
+  });
+
+  it("decodeDer refuses a signature whose second element is not an INTEGER", () => {
+    expect(() => decodeDer(Buffer.from("3006020101040102", "hex"))).toThrow("Malformed ECDSA signature: expected S");
+  });
+
+  it.each(["falcon-512", "ml-dsa-65"])("a %s verify with a wrong-length public key is false, not a throw", (type) => {
+    const provider = new NodeCryptoProvider();
+    const key = provider.generate(false, type);
+    const signature = provider.sign("data", key.prv, type);
+
+    expect(provider.verify("data", signature, key.pub, type)).toBe(true);
+    expect(provider.verify("data", signature, { pkcs8pem: Buffer.from("short").toString("base64") }, type)).toBe(false);
+  });
+});
