@@ -168,6 +168,8 @@ interface ISummaryObject {
   total: number;
   vote: number;
   commit: number;
+  /** The ledger's reasons, present when the transaction was rejected. */
+  errors?: string[];
 }
 
 interface IStreamsObject {
