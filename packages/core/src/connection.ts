@@ -24,6 +24,27 @@
 import axios, { AxiosRequestConfig } from "axios";
 import { IBaseTransaction, IConnectionDataOptions, IHttpOptions, ILedgerResponse } from "./interfaces";
 
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * Whether a reply from the ledger is a committed transaction: a JSON object
+ * with a `$summary` object whose `errors` are absent or empty. HTTP status is
+ * checked by the transport, which rejects anything outside 2xx. `commit` is
+ * not consulted - the ledger reports rejections in `errors`.
+ *
+ * @export
+ * @param {unknown} response - The parsed reply body
+ * @returns {boolean}
+ */
+export function isCommitted(response: unknown): response is ILedgerResponse {
+  if (!isObject(response) || !isObject(response.$summary)) {
+    return false;
+  }
+  const errors = response.$summary.errors;
+  return errors === undefined || (Array.isArray(errors) && errors.length === 0);
+}
+
 /**
  * Handles connecting to the ledger and sending transactions. Axios is
  * isomorphic (XHR in browsers/React Native, http in Node) so this class
@@ -101,7 +122,14 @@ export class Connection {
 
       try {
         const response = await axios(this.httpOptions as AxiosRequestConfig);
-        resolve(response.data as ILedgerResponse);
+        // A reply with no $summary object is not a ledger reply (a proxy
+        // page, an empty body, "{}"), so it must not look like a result. A
+        // ledger rejection delivered as HTTP 200 does carry one, with its
+        // reasons in $summary.errors, and still resolves for the caller.
+        if (!isObject(response.data) || !isObject(response.data.$summary)) {
+          throw new Error(`Unexpected ledger response (no $summary): ${JSON.stringify(response.data)}`);
+        }
+        resolve(response.data as unknown as ILedgerResponse);
       } catch (error) {
         reject(error);
       }

@@ -22,7 +22,7 @@
  */
 
 import * as crypto from "crypto";
-import { ICryptoProvider, IKeyHandleDetails, IKeyHandler } from "@activeledger/sdk-core";
+import { ICryptoProvider, IKey, IKeyHandleDetails, IKeyHandler } from "@activeledger/sdk-core";
 import { AsnParser } from "./asn";
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import { falcon512 } from "@noble/post-quantum/falcon.js";
@@ -65,6 +65,93 @@ const POST_QUANTUM: {
   "ml-dsa-65": ml_dsa65 as never,
   "falcon-512": falcon512 as never,
 };
+
+const KEY_CHECK_MESSAGE = "activeledger key consistency check";
+
+/**
+ * Check that an IKey is well formed and that its private and public halves
+ * belong together. Throws a descriptive Error otherwise.
+ *
+ * secp256k1 keys are "0x"-optional hex (private 32 bytes in [1, n-1], public a
+ * 33-byte compressed or 65-byte uncompressed point) and the public key must be
+ * the one derived from the scalar. Post-quantum keys are base64 of the exact
+ * encoded lengths and must pass a sign-and-verify round trip.
+ */
+export function assertValidKey(key: unknown): asserts key is IKey {
+  const k = key as Partial<IKey> | null;
+  if (typeof k !== "object" || k === null) {
+    throw new Error("Invalid key: expected an object");
+  }
+  if (typeof k.name !== "string" || !k.name) {
+    throw new Error("Invalid key: name must be a non-empty string");
+  }
+  if (k.identity !== undefined && typeof k.identity !== "string") {
+    throw new Error("Invalid key: identity must be a string");
+  }
+  const type = k.type as string;
+  const prv = k.key?.prv?.pkcs8pem;
+  const pub = k.key?.pub?.pkcs8pem;
+  if (typeof prv !== "string" || typeof pub !== "string") {
+    throw new Error("Invalid key: key.prv.pkcs8pem and key.pub.pkcs8pem must be strings");
+  }
+
+  const pq = POST_QUANTUM[type];
+  if (pq) {
+    const decode = (value: string, what: string, length: number): void => {
+      const bytes = Buffer.from(value, "base64");
+      if (bytes.toString("base64") !== value) {
+        throw new Error(`Invalid ${type} key: ${what} key is not canonical base64`);
+      }
+      if (bytes.length !== length) {
+        throw new Error(`Invalid ${type} key: ${what} key must be ${length} bytes, got ${bytes.length}`);
+      }
+    };
+    decode(prv, "private", pq.lengths.secretKey);
+    decode(pub, "public", pq.lengths.publicKey);
+
+    const provider = new NodeCryptoProvider();
+    let matches = false;
+    try {
+      matches = provider.verify(KEY_CHECK_MESSAGE, provider.sign(KEY_CHECK_MESSAGE, k.key!.prv, type), k.key!.pub, type);
+    } catch {
+      // Falls through to the error below
+    }
+    if (!matches) {
+      throw new Error(`Invalid ${type} key: the private and public keys do not belong together`);
+    }
+    return;
+  }
+
+  if (type !== "secp256k1") {
+    throw new Error(`Invalid key: unsupported type "${String(type)}" (supported: secp256k1, ml-dsa-65, falcon-512)`);
+  }
+
+  const hex = (value: string, what: string): Buffer => {
+    const clean = value.replace(/^0x/, "");
+    if (!/^(?:[0-9a-fA-F]{2})+$/.test(clean)) {
+      throw new Error(`Invalid secp256k1 key: ${what} key must be hex with an even number of digits`);
+    }
+    return Buffer.from(clean, "hex");
+  };
+  const prvBytes = hex(prv, "private");
+  const pubBytes = hex(pub, "public");
+  if (prvBytes.length !== 32) {
+    throw new Error(`Invalid secp256k1 key: private key must be 32 bytes, got ${prvBytes.length}`);
+  }
+  if (!((pubBytes.length === 33 && (pubBytes[0] === 2 || pubBytes[0] === 3)) || (pubBytes.length === 65 && pubBytes[0] === 4))) {
+    throw new Error("Invalid secp256k1 key: public key must be a 33-byte compressed or 65-byte uncompressed point");
+  }
+  const curve = crypto.createECDH("secp256k1");
+  try {
+    curve.setPrivateKey(prvBytes);
+  } catch {
+    throw new Error("Invalid secp256k1 key: the private scalar must be in [1, n-1]");
+  }
+  const derived = curve.getPublicKey(null, pubBytes.length === 33 ? "compressed" : "uncompressed");
+  if (!derived.equals(pubBytes)) {
+    throw new Error("Invalid secp256k1 key: the private and public keys do not belong together");
+  }
+}
 
 export class NodeCryptoProvider implements ICryptoProvider {
   public generate(compressed?: boolean, type?: string): IKeyHandler {

@@ -93,4 +93,97 @@ describe("KeyHandler.exportKey / importKey", () => {
     expect(payload.verify({ a: 1 }, sig, key.key.pub.pkcs8pem, key.type)).toBe(true);
     expect(payload.verify({ a: 2 }, sig, key.key.pub.pkcs8pem, key.type)).toBe(false);
   });
+
+  describe("importKey validation", () => {
+    const write = (value: unknown): string => {
+      const file = path.join(dir, "bad.json");
+      fs.writeFileSync(file, typeof value === "string" ? value : JSON.stringify(value));
+      return file;
+    };
+    const mutate = (key: any, f: (k: any) => void) => {
+      const copy = JSON.parse(JSON.stringify(key));
+      f(copy);
+      return copy;
+    };
+
+    it.each(["secp256k1", "ml-dsa-65", "falcon-512"])("accepts a freshly generated %s key", async (type) => {
+      const key = await keys.generateKey("k", false, type as any);
+      await keys.exportKey(key, dir);
+      expect(await keys.importKey(path.join(dir, "k.json"))).toEqual(key);
+    });
+
+    it("accepts compressed and uncompressed secp256k1 public keys, with or without 0x", async () => {
+      for (const compressed of [true, false]) {
+        const key = await keys.generateKey("k", compressed);
+        await expect(keys.importKey(write(key))).resolves.toEqual(key);
+        const bare = mutate(key, (k) => {
+          k.key.prv.pkcs8pem = k.key.prv.pkcs8pem.slice(2);
+          k.key.pub.pkcs8pem = k.key.pub.pkcs8pem.slice(2);
+        });
+        await expect(keys.importKey(write(bare))).resolves.toEqual(bare);
+      }
+    });
+
+    it("rejects a file that is not JSON, or not an object", async () => {
+      await expect(keys.importKey(write("not json"))).rejects.toThrow();
+      await expect(keys.importKey(write("null"))).rejects.toThrow("expected an object");
+      await expect(keys.importKey(write("[]"))).rejects.toThrow("Invalid key");
+    });
+
+    it("rejects an unknown or missing type", async () => {
+      const key = await keys.generateKey("k");
+      await expect(keys.importKey(write(mutate(key, (k) => (k.type = "rsa"))))).rejects.toThrow('unsupported type "rsa"');
+      await expect(keys.importKey(write(mutate(key, (k) => delete k.type)))).rejects.toThrow("unsupported type");
+    });
+
+    it("rejects missing or non-string key material", async () => {
+      const key = await keys.generateKey("k");
+      await expect(keys.importKey(write(mutate(key, (k) => delete k.key.prv)))).rejects.toThrow("must be strings");
+      await expect(keys.importKey(write(mutate(key, (k) => (k.key.pub.pkcs8pem = 5))))).rejects.toThrow("must be strings");
+      await expect(keys.importKey(write(mutate(key, (k) => (k.name = ""))))).rejects.toThrow("name");
+    });
+
+    it.each([
+      ["non-hex characters", (k: any) => (k.key.prv.pkcs8pem = "0x" + "zz".repeat(32))],
+      ["an odd number of digits", (k: any) => (k.key.prv.pkcs8pem = "0x" + "1".repeat(63))],
+      ["a short private key", (k: any) => (k.key.prv.pkcs8pem = "0x" + "11".repeat(31))],
+      ["a long private key", (k: any) => (k.key.prv.pkcs8pem = "0x" + "11".repeat(33))],
+      ["a zero scalar", (k: any) => (k.key.prv.pkcs8pem = "0x" + "00".repeat(32))],
+      ["a scalar equal to n", (k: any) => (k.key.prv.pkcs8pem = "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141")],
+      ["a public key of the wrong length", (k: any) => (k.key.pub.pkcs8pem = "0x02" + "11".repeat(10))],
+      ["a public key with a bad prefix", (k: any) => (k.key.pub.pkcs8pem = "0x05" + k.key.pub.pkcs8pem.slice(4))],
+    ])("rejects secp256k1 with %s", async (_n, f) => {
+      const key = await keys.generateKey("k", true);
+      await expect(keys.importKey(write(mutate(key, f)))).rejects.toThrow("Invalid secp256k1 key");
+    });
+
+    it("rejects a secp256k1 private key paired with someone else's public key", async () => {
+      const a = await keys.generateKey("a", true);
+      const b = await keys.generateKey("b", true);
+      const mixed = mutate(a, (k) => (k.key.pub.pkcs8pem = b.key.pub.pkcs8pem));
+      await expect(keys.importKey(write(mixed))).rejects.toThrow("do not belong together");
+    });
+
+    it.each(["ml-dsa-65", "falcon-512"])("rejects a %s key with mismatched halves", async (type) => {
+      const a = await keys.generateKey("a", false, type as any);
+      const b = await keys.generateKey("b", false, type as any);
+      const mixed = mutate(a, (k) => (k.key.pub.pkcs8pem = b.key.pub.pkcs8pem));
+      await expect(keys.importKey(write(mixed))).rejects.toThrow("do not belong together");
+    });
+
+    it.each(["ml-dsa-65", "falcon-512"])("rejects a %s key with bad encoding or length", async (type) => {
+      const a = await keys.generateKey("a", false, type as any);
+      await expect(keys.importKey(write(mutate(a, (k) => (k.key.prv.pkcs8pem = "!!!"))))).rejects.toThrow("base64");
+      await expect(keys.importKey(write(mutate(a, (k) => (k.key.pub.pkcs8pem = k.key.pub.pkcs8pem.slice(8)))))).rejects.toThrow(
+        /base64|bytes/
+      );
+      await expect(keys.importKey(write(mutate(a, (k) => (k.key.prv.pkcs8pem = "AAAA"))))).rejects.toThrow("private key must be");
+    });
+
+    it("rejects a post-quantum key whose type does not match its material", async () => {
+      const a = await keys.generateKey("a", false, "ml-dsa-65" as any);
+      await expect(keys.importKey(write(mutate(a, (k) => (k.type = "falcon-512"))))).rejects.toThrow("Invalid falcon-512 key");
+      await expect(keys.importKey(write(mutate(a, (k) => (k.type = "secp256k1"))))).rejects.toThrow("Invalid secp256k1 key");
+    });
+  });
 });

@@ -212,10 +212,33 @@ describe("KeyHandler.onboardKey", () => {
     const key = await new KeyHandler(provider).generateKey("mykey");
     await new KeyHandler(provider).onboardKey(
       key,
-      respondWith({ $streams: { new: [{ id: "new-id", name: "x" }], updated: [] } })
+      respondWith({ $summary: { total: 1, vote: 1, commit: 1 }, $streams: { new: [{ id: "new-id", name: "x" }], updated: [] } })
     );
 
     expect(key.identity).toBe("new-id");
+  });
+
+  it.each([
+    ["an empty object", {}],
+    ["no $summary", { $streams: { new: [{ id: "new-id", name: "x" }], updated: [] } }],
+    ["errors alongside a new stream", { $summary: { errors: ["1220 Signature Incorrect"] }, $streams: { new: [{ id: "new-id", name: "x" }], updated: [] } }],
+  ])("does not set an identity for %s", async (_name, body) => {
+    const provider = new StubCryptoProvider();
+    const key = await new KeyHandler(provider).generateKey("mykey");
+
+    await expect(new KeyHandler(provider).onboardKey(key, respondWith(body))).rejects.toThrow(
+      'Onboarding "mykey" created no identity'
+    );
+    expect(key.identity).toBeUndefined();
+  });
+
+  it("still requires the new stream when the summary is clean", async () => {
+    const provider = new StubCryptoProvider();
+    const key = await new KeyHandler(provider).generateKey("mykey");
+
+    await expect(
+      new KeyHandler(provider).onboardKey(key, respondWith({ $summary: { total: 1, vote: 1, commit: 1 }, $streams: { new: [], updated: [] } }))
+    ).rejects.toThrow('Onboarding "mykey" created no identity');
   });
 
   it("rejects with the ledger's errors when no identity was created", async () => {

@@ -26,7 +26,7 @@ import * as fs from "fs";
 import { generateMnemonic, mnemonicToSeedSync } from "bip39";
 import { IKey, KeyHandler as CoreKeyHandler, KeyType } from "@activeledger/sdk-core";
 import { IBIP39Options, IKeyExportOptions, IKeyExtended } from "./interfaces";
-import { NodeCryptoProvider } from "./crypto";
+import { assertValidKey, NodeCryptoProvider } from "./crypto";
 import { deriveSeed, validate } from "./recovery";
 
 /**
@@ -239,8 +239,15 @@ export class KeyHandler extends CoreKeyHandler {
             if (error) {
               reject(error);
             } else {
-              const data = buffer.toString();
-              resolve(JSON.parse(data) as IKey);
+              try {
+                // A key file is untrusted input: check it is well formed and
+                // that its two halves match, rather than failing at first use.
+                const key = JSON.parse(buffer.toString());
+                assertValidKey(key);
+                resolve(key);
+              } catch (err) {
+                reject(err);
+              }
             }
           });
         } else {

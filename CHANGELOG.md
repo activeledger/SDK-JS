@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A reply with no `$summary` object counted as a result.** `Connection.sendTransaction` now rejects a 2xx whose body is not a JSON object with a `$summary` object (`{}`, an HTML proxy page, an empty body), and `onboardKey` sets an identity only when the reply is committed - a `$summary` with no `errors` - and contains the new stream. A ledger rejection delivered as HTTP 200 still resolves from `sendTransaction`, carrying its `$summary.errors`. New export `isCommitted(response)`.
+- **sdk-node `importKey` trusted the file.** It now checks the `type`, the key encodings and lengths, and that the private and public keys belong together (secp256k1: the public key derived from the scalar; ml-dsa-65 and falcon-512: a sign-and-verify round trip), and rejects with a clear error.
+- **sdk-web `fromHex` accepted anything.** Non-hex characters and odd lengths were decoded to garbage bytes; they now throw, with an optional `0x` accepted as in sdk-node.
 - **sdk-web `restoreBIP39Key(..., { validate: false })` rejected a non-BIP-39 phrase** that sdk-node accepts, because `@scure/bip39` validates inside `mnemonicToSeedSync`. The seed is now computed with PBKDF2-HMAC-SHA512 directly, so the same phrase gives the same key on both. New export `unvalidatedSeed` in `recovery`.
 - **`ISummaryObject` had no `errors`**, so TypeScript users had to cast `$summary`. It now has an optional `errors?: string[]`, and the cast in `onboardKey` is gone.
 - **sdk-node `verify` threw on a public key OpenSSL cannot load** (for example an uncompressed point not on secp256k1). It now returns `false`, as sdk-web does.

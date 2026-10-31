@@ -1,5 +1,5 @@
 import axios from "axios";
-import { Connection } from "../connection";
+import { Connection, isCommitted } from "../connection";
 import { IBaseTransaction } from "../interfaces";
 
 jest.mock("axios", () => ({ __esModule: true, default: jest.fn() }));
@@ -15,7 +15,7 @@ describe("Connection.sendTransaction", () => {
   beforeEach(() => mockedAxios.mockReset());
 
   it("POSTs the transaction as JSON to the baseURL built from the positional arguments", async () => {
-    mockedAxios.mockResolvedValue({ data: { $umid: "u1" } });
+    mockedAxios.mockResolvedValue({ data: { $umid: "u1", $summary: { commit: 1 } } });
 
     await new Connection("https", "node.example.com", 5260).sendTransaction(tx);
 
@@ -27,7 +27,7 @@ describe("Connection.sendTransaction", () => {
   });
 
   it("builds the same baseURL from an options object, with a string port", async () => {
-    mockedAxios.mockResolvedValue({ data: {} });
+    mockedAxios.mockResolvedValue({ data: { $summary: {} } });
 
     await new Connection({ protocol: "http", address: "10.0.0.1", portNumber: "5261" }).sendTransaction(tx);
 
@@ -35,7 +35,7 @@ describe("Connection.sendTransaction", () => {
   });
 
   it("resolves with the response body, not the axios envelope", async () => {
-    const body = { $umid: "u2", $streams: { new: [], updated: [] } };
+    const body = { $umid: "u2", $summary: { commit: 1 }, $streams: { new: [], updated: [] } };
     mockedAxios.mockResolvedValue({ data: body, status: 200 });
 
     await expect(new Connection("http", "h", 1).sendTransaction(tx)).resolves.toBe(body);
@@ -53,7 +53,7 @@ describe("Connection.sendTransaction", () => {
     const sent: unknown[] = [];
     mockedAxios.mockImplementation((config: { data: unknown }) => {
       sent.push(config.data);
-      return Promise.resolve({ data: {} });
+      return Promise.resolve({ data: { $summary: {} } });
     });
     const connection = new Connection("http", "h", 1);
     const second: IBaseTransaction = { ...tx, $sigs: { b: "other" } };
@@ -99,12 +99,44 @@ describe("Connection against a real HTTP server", () => {
     ["empty", "", "application/json"],
     ["a JSON string", '"ok"', "application/json"],
     ["a JSON array", "[]", "application/json"],
-  ])("resolves a 200 with a non-object body (%s) as something that is not a commit", async (_n, body, type) => {
+    ["an empty object", "{}", "application/json"],
+    ["an object with no $summary", '{"$umid":"u","$streams":{"new":[{"id":"x"}]}}', "application/json"],
+    ["a null $summary", '{"$summary":null}', "application/json"],
+    ["a string $summary", '{"$summary":"ok"}', "application/json"],
+  ])("rejects a 200 whose body is not a ledger reply (%s)", async (_n, body, type) => {
     reply = { status: 200, body, type };
 
-    const response: any = await new Connection("http", "127.0.0.1", port).sendTransaction(tx);
-
-    expect(response?.$streams?.new).toBeUndefined();
-    expect(response?.$summary?.commit).toBeUndefined();
+    await expect(new Connection("http", "127.0.0.1", port).sendTransaction(tx)).rejects.toThrow(
+      "Unexpected ledger response"
+    );
   });
+
+  it("still resolves a ledger rejection delivered as HTTP 200", async () => {
+    const body = { $umid: "u", $summary: { total: 4, vote: 0, commit: 0, errors: ["1220 Signature Incorrect"] }, $streams: { new: [], updated: [] } };
+    reply = { status: 200, body: JSON.stringify(body) };
+
+    await expect(new Connection("http", "127.0.0.1", port).sendTransaction(tx)).resolves.toEqual(body);
+  });
+});
+
+describe("isCommitted", () => {
+  it.each([
+    ["a summary with no errors", { $summary: { total: 1, vote: 1, commit: 1 } }],
+    ["an empty errors list", { $summary: { errors: [] } }],
+    ["a summary with commit 0 and no errors", { $summary: { total: 1, vote: 1, commit: 0 } }],
+    ["an empty summary object", { $summary: {} }],
+  ])("accepts %s", (_n, body) => expect(isCommitted(body)).toBe(true));
+
+  it.each([
+    ["an empty object", {}],
+    ["no summary", { $streams: { new: [{ id: "x" }] } }],
+    ["a null summary", { $summary: null }],
+    ["an array summary", { $summary: [] }],
+    ["errors", { $summary: { errors: ["1220 Signature Incorrect"] } }],
+    ["a non-array errors value", { $summary: { errors: "nope" } }],
+    ["null", null],
+    ["undefined", undefined],
+    ["a string", "ok"],
+    ["an array", []],
+  ])("refuses %s", (_n, body) => expect(isCommitted(body)).toBe(false));
 });

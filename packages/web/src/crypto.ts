@@ -36,6 +36,11 @@ export function toHex(bytes: Uint8Array): string {
 
 export function fromHex(hex: string): Uint8Array {
   const clean = hex.replace(/^0x/, "");
+  // Same rule as sdk-node: an optional "0x", then whole bytes of hex digits.
+  // parseInt would otherwise read "zz" as NaN (0) and "1g" as 1.
+  if (!/^(?:[0-9a-fA-F]{2})*$/.test(clean)) {
+    throw new Error("Invalid hex: expected an optional 0x then an even number of hex digits");
+  }
   const bytes = new Uint8Array(clean.length / 2);
   for (let i = 0; i < bytes.length; i++) {
     bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
