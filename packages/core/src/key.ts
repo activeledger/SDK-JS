@@ -22,6 +22,7 @@
  */
 
 import { Connection } from "./connection";
+import { isCommitted } from "./connection";
 import { KeyType } from "./enums";
 import { ICryptoProvider, IKey, ILedgerResponse } from "./interfaces";
 import { TransactionHandler } from "./transaction";
@@ -134,7 +135,7 @@ export class KeyHandler {
         // to fail with "Cannot read properties of undefined (reading 'id')",
         // which hid the ledger's own reason.
         const created = response && response.$streams && response.$streams.new;
-        if (!created || !created.length || !created[0].id) {
+        if (!isCommitted(response) || !created || !created.length || !created[0].id) {
           const errors = (response && response.$summary?.errors) || [];
           return reject(
             new Error(

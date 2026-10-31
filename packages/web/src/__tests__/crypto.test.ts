@@ -1,5 +1,5 @@
 import * as crypto from "crypto";
-import { WebCryptoProvider } from "../crypto.js";
+import { fromHex, WebCryptoProvider } from "../crypto.js";
 
 describe("WebCryptoProvider", () => {
   it("generates a keypair as 0x-prefixed hex", () => {
@@ -118,5 +118,35 @@ describe("WebCryptoProvider.verify - public key validation", () => {
 
     expect(provider.verify("data", signature, { pkcs8pem: "0x04" + "00".repeat(64) })).toBe(false);
     expect(provider.verify("data", signature, { pkcs8pem: "0x00" })).toBe(false);
+  });
+});
+
+describe("fromHex", () => {
+  it.each([
+    ["0x00ff10", [0, 255, 16]],
+    ["00FF10", [0, 255, 16]],
+    ["0x", []],
+    ["", []],
+  ])("decodes %s", (hex, bytes) => {
+    expect(Array.from(fromHex(hex))).toEqual(bytes);
+  });
+
+  it.each([
+    ["non-hex characters", "0xzz"],
+    ["a half-valid pair", "0x1g"],
+    ["an odd number of digits", "0xabc"],
+    ["whitespace", "0x ab"],
+    ["a doubled prefix", "0x0xab"],
+    ["an uppercase prefix", "0Xab"],
+  ])("rejects %s", (_n, hex) => {
+    expect(() => fromHex(hex)).toThrow("Invalid hex");
+  });
+
+  it("makes sign and verify throw rather than use a garbled key", () => {
+    const provider = new WebCryptoProvider();
+    const key = provider.generate();
+    expect(() => provider.sign("x", { pkcs8pem: "0x" + "zz".repeat(32) })).toThrow("Invalid hex");
+    const sig = provider.sign("x", key.prv);
+    expect(() => provider.verify("x", sig, { pkcs8pem: key.pub.pkcs8pem + "g" })).toThrow("Invalid hex");
   });
 });
