@@ -10,7 +10,7 @@
     "prepublishOnly": "npm run build",
     "test": "NODE_OPTIONS=--experimental-vm-modules npx jest --config jest.config.mjs"
   },
-  "homepage": "https://github.com/activeledger/SDK-JS",
+  "homepage": "https://activeledger.github.io/activeledger/sdks/js/",
   "keywords": [
     "activeledger",
     "web",

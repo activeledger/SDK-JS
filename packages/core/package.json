@@ -8,7 +8,7 @@
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
-  "homepage": "https://github.com/activeledger/SDK-JS",
+  "homepage": "https://activeledger.github.io/activeledger/sdks/js/",
   "keywords": [
     "activeledger",
     "sdk",
