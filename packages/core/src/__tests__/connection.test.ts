@@ -64,3 +64,47 @@ describe("Connection.sendTransaction", () => {
     expect(sent).toEqual([tx, second]);
   });
 });
+
+describe("Connection against a real HTTP server", () => {
+  // jest.mock("axios") above stubs the transport, so these load the real one.
+  const http = require("http") as typeof import("http");
+  const realAxios = jest.requireActual("axios").default;
+
+  const tx: IBaseTransaction = { $sigs: {}, $tx: { $namespace: "default", $contract: "c", $i: {} } };
+  let server: import("http").Server;
+  let reply: { status: number; body: string; type?: string };
+  let port: number;
+
+  beforeAll(async () => {
+    server = http.createServer((_req, res) => {
+      res.writeHead(reply.status, { "Content-Type": reply.type || "application/json" });
+      res.end(reply.body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    port = (server.address() as import("net").AddressInfo).port;
+  });
+  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  beforeEach(() => mockedAxios.mockImplementation((config: unknown) => realAxios(config)));
+
+  it.each([400, 404, 500, 502])("rejects a %i response rather than resolving its body", async (status) => {
+    reply = { status, body: JSON.stringify({ $summary: { commit: 1 }, $streams: { new: [{ id: "x" }] } }) };
+
+    await expect(new Connection("http", "127.0.0.1", port).sendTransaction(tx)).rejects.toMatchObject({
+      response: { status },
+    });
+  });
+
+  it.each([
+    ["HTML", "<html>proxy page</html>", "text/html"],
+    ["empty", "", "application/json"],
+    ["a JSON string", '"ok"', "application/json"],
+    ["a JSON array", "[]", "application/json"],
+  ])("resolves a 200 with a non-object body (%s) as something that is not a commit", async (_n, body, type) => {
+    reply = { status: 200, body, type };
+
+    const response: any = await new Connection("http", "127.0.0.1", port).sendTransaction(tx);
+
+    expect(response?.$streams?.new).toBeUndefined();
+    expect(response?.$summary?.commit).toBeUndefined();
+  });
+});

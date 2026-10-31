@@ -135,7 +135,7 @@ export class KeyHandler {
         // which hid the ledger's own reason.
         const created = response && response.$streams && response.$streams.new;
         if (!created || !created.length || !created[0].id) {
-          const errors = (response && (response.$summary as any)?.errors) || [];
+          const errors = (response && response.$summary?.errors) || [];
           return reject(
             new Error(
               `Onboarding "${key.name}" created no identity` +

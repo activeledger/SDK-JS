@@ -83,12 +83,8 @@ export function seedSize(type: KeyType): number {
  * does not fail: it derives a perfectly valid key for an identity nobody
  * owns, and the only symptom is the ledger not recognising it.
  *
- * NOTE that `KeyHandler.restoreBIP39Key` deliberately does NOT call this.
- * Neither `bip39` nor `@scure/bip39` validates inside `mnemonicToSeedSync`,
- * so this SDK has always accepted an arbitrary string there and derived a key
- * from it. Someone may be relying on that, and rejecting their phrase now
- * would make an existing identity unrecoverable - the same failure this
- * function exists to prevent. Call it explicitly, or use `toSeed`.
+ * `KeyHandler.restoreBIP39Key` calls this unless given `{ validate: false }`,
+ * which derives from an arbitrary string exactly as sdk-web does.
  *
  * @throws if the phrase is not a valid mnemonic
  */

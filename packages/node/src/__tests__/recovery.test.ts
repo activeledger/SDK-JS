@@ -145,4 +145,19 @@ describe("recovery (sdk-node)", () => {
       recovery.deriveSeed(KeyType.EllipticCurve, bip39).toString("hex")
     );
   });
+
+  it("derives the same keys as sdk-web for a non-mnemonic string with validate: false", async () => {
+    // The same expected values are asserted in sdk-web's recovery test.
+    const phrase = "not a real mnemonic at all";
+
+    const plain = await handler.restoreBIP39Key("k", phrase, { validate: false, compressed: true });
+    expect(plain.key.prv.pkcs8pem).toBe("0x739c20553484a4d919364a20181ca4f79cb9944fe77719736151825d29b37174");
+
+    const salted = await handler.restoreBIP39Key("k", phrase, {
+      validate: false,
+      compressed: true,
+      passphrase: "p\u00e4ssword",
+    });
+    expect(salted.key.prv.pkcs8pem).toBe("0xd8082d6d3a25a8841539d7dddcef2ec98886231e709a1e91b949549e2fd0cc25");
+  });
 });

@@ -3,6 +3,7 @@ import { KeyType } from "../enums";
 import { TransactionHandler } from "../transaction";
 import { KeyHandler } from "../key";
 import { Connection } from "../connection";
+import { ILedgerResponse } from "../interfaces";
 
 /**
  * A deterministic stub crypto provider - core's job is orchestrating
@@ -232,6 +233,50 @@ describe("KeyHandler.onboardKey", () => {
       )
     ).rejects.toThrow('Onboarding "mykey" created no identity: 1220 Signature Incorrect');
     expect(key.identity).toBeUndefined();
+  });
+
+  it.each([["a string", "<html>502 Bad Gateway</html>"], ["null", null], ["undefined", undefined], ["a number", 7], ["an array", []]])(
+    "does not commit or throw from the accessors when the body is %s",
+    async (_name, body) => {
+      const provider = new StubCryptoProvider();
+      const key = await new KeyHandler(provider).generateKey("mykey");
+
+      await expect(new KeyHandler(provider).onboardKey(key, respondWith(body))).rejects.toThrow(
+        'Onboarding "mykey" created no identity'
+      );
+      expect(key.identity).toBeUndefined();
+    }
+  );
+
+  it("does not commit when the summary is missing or has no errors", async () => {
+    const provider = new StubCryptoProvider();
+    const key = await new KeyHandler(provider).generateKey("mykey");
+
+    await expect(
+      new KeyHandler(provider).onboardKey(key, respondWith({ $summary: null, $streams: null }))
+    ).rejects.toThrow("ledger response:");
+    expect(key.identity).toBeUndefined();
+  });
+
+  it("types $summary.errors without a cast", () => {
+    const rejected: ILedgerResponse = {
+      $umid: "u",
+      $summary: { total: 4, vote: 0, commit: 0, errors: ["1220 Signature Incorrect"] },
+      $streams: { new: [], updated: [] },
+    };
+    const accepted: ILedgerResponse = {
+      $umid: "u",
+      $summary: { total: 4, vote: 4, commit: 4 },
+      $streams: { new: [], updated: [] },
+    };
+    const reasons: string[] = rejected.$summary.errors ?? [];
+
+    expect(reasons).toEqual(["1220 Signature Incorrect"]);
+    expect(accepted.$summary.errors).toBeUndefined();
+
+    // @ts-expect-error errors is a list of strings, not a string
+    const bad: ILedgerResponse["$summary"] = { total: 1, vote: 1, commit: 1, errors: "nope" };
+    expect(bad).toBeDefined();
   });
 });
 

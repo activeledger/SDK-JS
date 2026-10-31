@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **sdk-web `restoreBIP39Key(..., { validate: false })` rejected a non-BIP-39 phrase** that sdk-node accepts, because `@scure/bip39` validates inside `mnemonicToSeedSync`. The seed is now computed with PBKDF2-HMAC-SHA512 directly, so the same phrase gives the same key on both. New export `unvalidatedSeed` in `recovery`.
+- **`ISummaryObject` had no `errors`**, so TypeScript users had to cast `$summary`. It now has an optional `errors?: string[]`, and the cast in `onboardKey` is gone.
+- **sdk-node `verify` threw on a public key OpenSSL cannot load** (for example an uncompressed point not on secp256k1). It now returns `false`, as sdk-web does.
 - **Onboarding a key that already has an identity** signed under the identity instead of the `$i` label, and the ledger rejected it with "Self signed signature not found". `buildOnboardKeyTx` now always keys `$sigs` by the key name, as the ledger's self-signed path requires.
 - **`buildOnboardKeyTx` options leaked into later calls.** A custom `contract` or `namespace` was written onto the `TransactionHandler`, so every later onboard through the same handler used it too. Options now apply to the one call.
 - **A rejected onboard now rejects with the ledger's reason.** `onboardKey` read `$streams.new[0].id` unguarded and failed with "Cannot read properties of undefined (reading 'id')" when no identity was created, hiding the ledger's errors. It now rejects with them, and leaves `key.identity` unset.

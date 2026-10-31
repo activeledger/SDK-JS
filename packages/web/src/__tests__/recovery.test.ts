@@ -68,17 +68,34 @@ describe("recovery (sdk-web)", () => {
     ).resolves.toBeDefined();
   });
 
-  it("skipping validation is NOT the same leniency as sdk-node", () => {
-    // A pre-existing platform difference, pinned rather than papered over.
-    // @scure/bip39 enforces the word count inside mnemonicToSeedSync; node's
-    // bip39 enforces nothing. So restoreBIP39Key("arbitrary string") derives a
-    // key on sdk-node and throws here. Neither side can be changed safely:
-    // relaxing web is harmless but pointless, and tightening node would reject
-    // phrases that currently work and orphan whatever they unlock.
-    //
-    // This is exactly why toSeed validates BY DEFAULT - it is the only way to
-    // get the same answer on both platforms.
-    expect(() => recovery.toSeed("not a real mnemonic at all", "", { validate: false })).toThrow();
+  it("skipping validation accepts any string, exactly as sdk-node does", async () => {
+    // @scure/bip39 enforces the word count inside mnemonicToSeedSync, so the
+    // unchecked seed is computed here with PBKDF2 directly. The expected keys
+    // were produced by sdk-node's restoreBIP39Key({ validate: false }) for the
+    // same inputs - the same phrase must be the same identity on both.
+    const phrase = "not a real mnemonic at all";
+
+    expect(() => recovery.toSeed(phrase)).toThrow();
+    expect(recovery.toSeed(phrase, "", { validate: false })).toHaveLength(64);
+
+    const plain = await handler.restoreBIP39Key("k", phrase, { validate: false, compressed: true });
+    expect(plain.key.prv.pkcs8pem).toBe("0x739c20553484a4d919364a20181ca4f79cb9944fe77719736151825d29b37174");
+    expect(plain.key.pub.pkcs8pem).toBe("0x02d3d4b93a1d3d62f339d47ffbce11d8c660e9d2a8f85208215273f9eb38b29a22");
+
+    // The passphrase is NFKD-normalised into the salt.
+    const salted = await handler.restoreBIP39Key("k", phrase, {
+      validate: false,
+      compressed: true,
+      passphrase: "p\u00e4ssword",
+    });
+    expect(salted.key.prv.pkcs8pem).toBe("0xd8082d6d3a25a8841539d7dddcef2ec98886231e709a1e91b949549e2fd0cc25");
+    expect(salted.key.pub.pkcs8pem).toBe("0x03c1f87797ad13e6762f1750a1f729fc8059063a4e50716b6d2a9e92ad17486c1c");
+  });
+
+  it("the unchecked seed equals the validated seed for a valid phrase", () => {
+    for (const v of phraseVectors.filter((x) => x.scheme === "v1")) {
+      expect(hex(recovery.unvalidatedSeed(v.phrase, v.passphrase))).toBe(v.bip39Seed);
+    }
   });
 
   it("refuses a BIP-39 seed of the wrong length", () => {

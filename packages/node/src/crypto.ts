@@ -341,9 +341,16 @@ export class NodeCryptoProvider implements ICryptoProvider {
       }
     }
 
-    const verify = crypto.createVerify("sha256");
-    verify.update(data);
-    return verify.verify(this.toPublicPem(pub.pkcs8pem), Buffer.from(signature, "base64"));
+    // OpenSSL throws on a public key it cannot load - an uncompressed point
+    // that is not on secp256k1, say. That is a failed verification, the same
+    // answer sdk-web gives, not an exception.
+    try {
+      const verify = crypto.createVerify("sha256");
+      verify.update(data);
+      return verify.verify(this.toPublicPem(pub.pkcs8pem), Buffer.from(signature, "base64"));
+    } catch {
+      return false;
+    }
   }
 
   /**
