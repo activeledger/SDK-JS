@@ -9,6 +9,8 @@
 
 # Activeledger - SDK
 
+**Documentation:** [SDK guide](https://activeledger.github.io/activeledger/sdks/js/) | [All SDKs](https://activeledger.github.io/activeledger/sdks/) | [Activeledger guide](https://activeledger.github.io/activeledger/)
+
 Two packages for connecting a JavaScript/TypeScript application to an Activeledger network:
 
 | Package                                                     | For                                       | Signing                                                                     |

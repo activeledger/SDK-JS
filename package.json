@@ -14,7 +14,7 @@
     "vectors:seed": "node scripts/seed-vectors.mjs",
     "vectors:numbers": "node scripts/number-vectors.mjs"
   },
-  "homepage": "https://github.com/activeledger/SDK-JS",
+  "homepage": "https://activeledger.github.io/activeledger/sdks/js/",
   "keywords": [
     "activeledger",
     "sdk",
