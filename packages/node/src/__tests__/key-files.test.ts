@@ -78,6 +78,19 @@ describe("KeyHandler.exportKey / importKey", () => {
     expect(await keys.importKey(path.join(nested, "alice.json"))).toEqual(key);
   });
 
+  it("rejects when createDir cannot make the directory, and writes nothing", async () => {
+    const key = await keys.generateKey("alice");
+    const blocker = path.join(dir, "blocker");
+    fs.writeFileSync(blocker, "a file where a directory is needed");
+
+    await expect(keys.exportKey(key, path.join(blocker, "keys"), true)).rejects.toMatchObject({ code: "ENOTDIR" });
+    expect(fs.readdirSync(dir)).toEqual(["blocker"]);
+  });
+
+  it("importKey rejects, rather than hanging, when the path is a directory", async () => {
+    await expect(keys.importKey(dir)).rejects.toMatchObject({ code: "EISDIR" });
+  });
+
   it("importKey rejects for a missing file", async () => {
     await expect(keys.importKey(path.join(dir, "nope.json"))).rejects.toBe("File not found.");
   });

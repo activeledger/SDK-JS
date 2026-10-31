@@ -119,6 +119,77 @@ describe("Connection against a real HTTP server", () => {
   });
 });
 
+describe("Connection under concurrency and transport faults", () => {
+  const http = require("http") as typeof import("http");
+  const realAxios = jest.requireActual("axios").default;
+
+  let server: import("http").Server;
+  let port: number;
+  let seen: string[];
+  let release: (() => void)[];
+
+  beforeAll(async () => {
+    server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        if (req.url === "/") {
+          seen.push(body);
+          // Hold every reply until released, so the sends overlap in flight
+          release.push(() => {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ $summary: { commit: 1 }, $umid: JSON.parse(body).$sigs.id }));
+          });
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    port = (server.address() as import("net").AddressInfo).port;
+  });
+  afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  beforeEach(() => {
+    seen = [];
+    release = [];
+    mockedAxios.mockImplementation((config: unknown) => realAxios(config));
+  });
+
+  const txFor = (id: string): IBaseTransaction => ({
+    $sigs: { id },
+    $tx: { $namespace: "default", $contract: "c", $i: {} },
+  });
+
+  it("keeps simultaneous sends on one Connection apart", async () => {
+    const connection = new Connection("http", "127.0.0.1", port);
+
+    const first = connection.sendTransaction(txFor("one"));
+    const second = connection.sendTransaction(txFor("two"));
+    const third = connection.sendTransaction(txFor("three"));
+    while (release.length < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    release.forEach((respond) => respond());
+
+    // Each caller must get the reply to its own transaction, and the node must
+    // have been sent three distinct bodies rather than one repeated.
+    expect((await first).$umid).toBe("one");
+    expect((await second).$umid).toBe("two");
+    expect((await third).$umid).toBe("three");
+    expect(seen.map((body) => JSON.parse(body).$sigs.id).sort()).toEqual(["one", "three", "two"]);
+  });
+
+  it("rejects when the node drops the connection before replying", async () => {
+    const dropper = http.createServer((req) => req.socket.destroy());
+    await new Promise<void>((resolve) => dropper.listen(0, "127.0.0.1", resolve));
+    const dropPort = (dropper.address() as import("net").AddressInfo).port;
+
+    try {
+      await expect(new Connection("http", "127.0.0.1", dropPort).sendTransaction(txFor("x"))).rejects.toBeDefined();
+    } finally {
+      await new Promise<void>((resolve) => dropper.close(() => resolve()));
+    }
+  });
+});
+
 describe("isCommitted", () => {
   it.each([
     ["a summary with no errors", { $summary: { total: 1, vote: 1, commit: 1 } }],
