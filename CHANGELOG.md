@@ -7,22 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.0]
+
+### Changed
+
+- **A reply counts as committed only if it is a 2xx JSON object with a `$summary` object.** `Connection.sendTransaction` now rejects a 2xx whose body is `{}`, an HTML proxy page or empty, and `onboardKey` sets an identity only when the reply is committed (a `$summary` with no `errors`) and contains the new stream. A ledger rejection delivered as HTTP 200 still resolves from `sendTransaction`, carrying its `$summary.errors`. **What to do:** if you treated any resolved `sendTransaction` as success, check `isCommitted(response)` (new export) instead.
+- **sdk-node `importKey` validates the key file.** It checks the `type`, the key encodings and lengths, and that the private and public keys belong together. A file that fails now rejects with a clear error where it used to be accepted. **What to do:** re-export any key file that was assembled by hand or edited.
+- **sdk-web `fromHex` rejects non-hex characters and odd lengths** (an optional `0x` is accepted, as in sdk-node). **What to do:** pass valid hex.
+
+### Fixed
+
+- **sdk-web `restoreBIP39Key(..., { validate: false })` rejected a non-BIP-39 phrase** that sdk-node accepts, because `@scure/bip39` validates inside `mnemonicToSeedSync`. The seed is now computed with PBKDF2-HMAC-SHA512 directly, so the same phrase gives the same key on both. New export `unvalidatedSeed` in `recovery`.
+- **`ISummaryObject` had no `errors`**, so TypeScript users had to cast `$summary`. It now has an optional `errors?: string[]`, and the cast in `onboardKey` is gone.
+- **sdk-node `verify` threw on a public key OpenSSL cannot load** (for example an uncompressed point not on secp256k1). It now returns `false`, as sdk-web does.
+
+### Performance
+
+- sdk-node secp256k1 signing parses the private key once per signature instead of twice. Measured on Node 24.19 (500 signs per sample, WSL2): 1.12-1.25 ms to 0.78-0.79 ms per signature. Output is unchanged.
+
+### Tests and CI
+
+- Coverage for `Connection`, `LedgerEvents`, `labelledTransaction` options, node key file import and export, ASN.1 and the web wrappers.
+- `scripts/smoke-pack.mjs` (build, pack and install the three packages into a fresh project) now runs in CI.
+- Live-network suite for sdk-node, skipped unless `AL_NODES` and `AL_STORAGE` are set.
+- `scripts/verify-input-validation.mjs` checks that sdk-node and sdk-web agree on input validation, and runs in `npm test`.
+- README links to the hosted documentation.
+
+## [2.6.0]
+
 ### Deprecated
 
 - **`LedgerEvents`, and ActiveCore with it.** ActiveCore is deprecated and should not be used, and it no longer serves events: a node serves contract events from its own storage service at `http://localhost:<storage port>/activeledgerevents/events`. That service must never be reachable beyond the node's host, so a client SDK - particularly one in a browser or on a phone - has nothing it should connect to. Run your own server-sent events listener on the node's host and relay what your application needs. `LedgerEvents` still works against an ActiveCore server and will be removed in the next major version.
 
 ### Fixed
 
-- **A reply with no `$summary` object counted as a result.** `Connection.sendTransaction` now rejects a 2xx whose body is not a JSON object with a `$summary` object (`{}`, an HTML proxy page, an empty body), and `onboardKey` sets an identity only when the reply is committed - a `$summary` with no `errors` - and contains the new stream. A ledger rejection delivered as HTTP 200 still resolves from `sendTransaction`, carrying its `$summary.errors`. New export `isCommitted(response)`.
-- **sdk-node `importKey` trusted the file.** It now checks the `type`, the key encodings and lengths, and that the private and public keys belong together (secp256k1: the public key derived from the scalar; ml-dsa-65 and falcon-512: a sign-and-verify round trip), and rejects with a clear error.
-- **sdk-web `fromHex` accepted anything.** Non-hex characters and odd lengths were decoded to garbage bytes; they now throw, with an optional `0x` accepted as in sdk-node.
-- **sdk-web `restoreBIP39Key(..., { validate: false })` rejected a non-BIP-39 phrase** that sdk-node accepts, because `@scure/bip39` validates inside `mnemonicToSeedSync`. The seed is now computed with PBKDF2-HMAC-SHA512 directly, so the same phrase gives the same key on both. New export `unvalidatedSeed` in `recovery`.
-- **`ISummaryObject` had no `errors`**, so TypeScript users had to cast `$summary`. It now has an optional `errors?: string[]`, and the cast in `onboardKey` is gone.
-- **sdk-node `verify` threw on a public key OpenSSL cannot load** (for example an uncompressed point not on secp256k1). It now returns `false`, as sdk-web does.
 - **Onboarding a key that already has an identity** signed under the identity instead of the `$i` label, and the ledger rejected it with "Self signed signature not found". `buildOnboardKeyTx` now always keys `$sigs` by the key name, as the ledger's self-signed path requires.
 - **`buildOnboardKeyTx` options leaked into later calls.** A custom `contract` or `namespace` was written onto the `TransactionHandler`, so every later onboard through the same handler used it too. Options now apply to the one call.
 - **A rejected onboard now rejects with the ledger's reason.** `onboardKey` read `$streams.new[0].id` unguarded and failed with "Cannot read properties of undefined (reading 'id')" when no identity was created, hiding the ledger's errors. It now rejects with them, and leaves `key.identity` unset.
 - **`LedgerEvents` cut one character too many off a trailing slash**, so `http://host:5261/` subscribed to `http://host:526/api`. Trailing slashes are now stripped exactly.
+
+## [2.5.1]
+
+### Fixed
+
+- **sdk-node signing with an RSA key threw "Malformed ECDSA signature"**, because low-S folding (added in 2.5.0) was applied to every non-post-quantum key. It now folds only EC signatures.
+- **`generate()` and `generateFromSeed()` silently returned a secp256k1 key** for any non-post-quantum type, including `rsa`. They now throw for anything but secp256k1, ml-dsa-65 and falcon-512. Signing and verifying with an existing RSA key is unaffected.
 
 ## [2.5.0]
 
