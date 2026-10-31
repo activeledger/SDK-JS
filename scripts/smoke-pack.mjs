@@ -9,7 +9,8 @@
 //
 // Run with `node scripts/smoke-pack.mjs` from the repo root. The install runs
 // with --offline, so it needs the dependencies in npm's cache (any prior
-// `npm ci` leaves them there); nothing else touches the network.
+// `npm ci` leaves them there); nothing else touches the network. Set
+// SMOKE_ONLINE=1 to allow the install to fetch what the cache lacks.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -47,7 +48,9 @@ try {
   console.log("ok - packed " + readdirSync(tarballs).join(", "));
 
   writeFileSync(join(project, "package.json"), JSON.stringify({ name: "smoke", private: true, type: "module" }));
-  run("npm", ["install", "--offline", "--no-audit", "--no-fund", ...files], project);
+  // SMOKE_ONLINE=1 lets npm reach the registry, for CI where the cache is empty.
+  const mode = process.env.SMOKE_ONLINE ? [] : ["--offline"];
+  run("npm", ["install", ...mode, "--no-audit", "--no-fund", ...files], project);
   console.log("ok - installed into a fresh project");
 
   writeFileSync(join(project, "consumer.mjs"), consumer());

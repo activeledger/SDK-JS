@@ -43,3 +43,13 @@ jobs:
       # because Jest's ESM runtime cannot load sdk-node's CommonJS build at
       # all (it require()s an ESM-only dependency).
       - run: npm test
+
+      # Packs the three packages and installs the tarballs into a fresh
+      # project, so a missing file in a package's "files" list fails here
+      # instead of after publish. The runner's npm cache does not hold the
+      # dependencies, so the install may fetch them. Once is enough: it checks packaging, not the
+      # Node version.
+      - if: matrix.node == '22'
+        run: node scripts/smoke-pack.mjs
+        env:
+          SMOKE_ONLINE: "1"
