@@ -295,15 +295,17 @@ export class NodeCryptoProvider implements ICryptoProvider {
 
     const sign = crypto.createSign("sha256");
     sign.update(data);
-    const pem = this.toPrivatePem(prv.pkcs8pem);
-    const signature = sign.sign(pem);
+    // Parsed once: OpenSSL's PEM decode is the dominant cost of signing, and
+    // both the signature and the key-type check below need the key.
+    const privateKey = crypto.createPrivateKey(this.toPrivatePem(prv.pkcs8pem));
+    const signature = sign.sign(privateKey);
 
     // Low-S folding reads the signature as a DER (r, s) pair - an ECDSA
     // shape. An RSA signature is a single integer, so folding one threw
     // "Malformed ECDSA signature: expected R" and broke RSA signing
     // outright. That is not a hypothetical key type: the contract-deploy
     // identity on some networks is RSA, and this stopped every deploy.
-    if (crypto.createPrivateKey(pem).asymmetricKeyType !== "ec") {
+    if (privateKey.asymmetricKeyType !== "ec") {
       return signature.toString("base64");
     }
 
