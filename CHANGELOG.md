@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.7.1]
+
+### Security
+
+- **`sdk-core` no longer allows vulnerable releases of its HTTP stack.** It depended on `axios ^1.7.0`, a range that lets an install with an existing lockfile stay on an axios release with known high-severity advisories, and on `follow-redirects` only through axios. The floors are now `axios ^1.20.0` and `follow-redirects ^1.16.2` (a direct dependency, so the floor holds whichever axios is picked).
+  - axios before 1.20.0: a ReDoS in the data-URL parser that freezes the event loop, a ReDoS in proxy bypass handling reachable through an untrusted redirect `Location`, redirect-based SSRF when `maxRedirects: 0` is not enforced by the fetch adapter, an HTTP/2 adapter that bypasses configured DNS lookup and proxy controls, and several prototype-pollution gadgets in request configuration.
+  - follow-redirects 1.16.0 and 1.16.1: credential headers (`Authorization` and similar) can follow a cross-origin redirect.
+  - **What to do:** upgrade `@activeledger/sdk-core` (and `sdk-node` or `sdk-web`, which depend on it) to 2.7.1, then refresh your lockfile so it resolves axios 1.20.0 or newer and follow-redirects 1.16.2 or newer (for example `npm update axios follow-redirects`, or `pnpm update axios follow-redirects -r`). Installing 2.7.1 alone is not enough if your lockfile already pins the old releases. This repository's own lockfile already resolved patched releases; the change is to the range everyone else installs.
+  - No API change.
+
+### Tests
+
+- Tests fail if the declared floors are lowered or this repository's lockfile resolves a release below them.
+
 ## [2.7.0]
 
 ### Changed
